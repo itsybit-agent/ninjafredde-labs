@@ -308,6 +308,64 @@
         .boot-complete .boot-sequence {
             display: none;
         }
+        
+        /* Touch-friendly improvements */
+        .menu-item {
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .back-btn {
+            display: inline-block;
+            margin-top: 30px;
+            padding: 10px 20px;
+            border: 1px solid var(--phosphor-dim);
+            color: var(--phosphor-dim);
+            cursor: pointer;
+            transition: all 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .back-btn:hover, .back-btn:active {
+            background: var(--phosphor);
+            color: var(--bg);
+            border-color: var(--phosphor);
+        }
+        
+        /* Mobile adjustments */
+        @media (max-width: 600px) {
+            .screen {
+                padding: 15px;
+                top: 10px;
+                left: 10px;
+                right: 10px;
+                bottom: 10px;
+            }
+            
+            .menu-item {
+                padding: 12px 15px;
+                font-size: 1em;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .datetime {
+                text-align: left;
+            }
+            
+            .footer {
+                font-size: 12px;
+                flex-direction: column;
+                gap: 5px;
+            }
+            
+            .logo-icon {
+                font-size: 24px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -379,9 +437,7 @@
                         <span class="label">SPECIAL ORDER 937</span>
                         <span class="status-error">[EYES ONLY]</span>
                     </div>
-                    <p style="margin-top: 30px; color: var(--phosphor-dim)">
-                        [ESC] RETURN TO MAIN MENU
-                    </p>
+                    <div class="back-btn" onclick="showMenu()">← RETURN TO MAIN MENU</div>
                 </div>
                 
                 <!-- Personnel Section -->
@@ -411,9 +467,7 @@
                         <span>ENGINEERS</span>
                         <span>PARKER, D. / BRETT, S.E.</span>
                     </div>
-                    <p style="margin-top: 30px; color: var(--phosphor-dim)">
-                        [ESC] RETURN TO MAIN MENU
-                    </p>
+                    <div class="back-btn" onclick="showMenu()">← RETURN TO MAIN MENU</div>
                 </div>
                 
                 <!-- Systems Section -->
@@ -443,9 +497,7 @@
                         <span class="label">HYPERDRIVE</span>
                         <span class="status-warn">STANDBY</span>
                     </div>
-                    <p style="margin-top: 30px; color: var(--phosphor-dim)">
-                        [ESC] RETURN TO MAIN MENU
-                    </p>
+                    <div class="back-btn" onclick="showMenu()">← RETURN TO MAIN MENU</div>
                 </div>
                 
                 <!-- Comms Section -->
@@ -458,9 +510,7 @@
                         <div style="color: var(--phosphor-dim); margin-bottom: 10px;">OUTGOING SIGNAL BUFFER:</div>
                         <div>_ <span class="cursor"></span></div>
                     </div>
-                    <p style="margin-top: 30px; color: var(--phosphor-dim)">
-                        [ESC] RETURN TO MAIN MENU
-                    </p>
+                    <div class="back-btn" onclick="showMenu()">← RETURN TO MAIN MENU</div>
                 </div>
                 
                 <!-- Classified Section -->
@@ -478,9 +528,7 @@
                         ACCESS DENIED // CLEARANCE LEVEL 6 REQUIRED
                     </p>
                     <p>INCIDENT LOGGED // TERMINAL 7G</p>
-                    <p style="margin-top: 30px; color: var(--phosphor-dim)">
-                        [ESC] RETURN TO MAIN MENU
-                    </p>
+                    <div class="back-btn" onclick="showMenu()">← RETURN TO MAIN MENU</div>
                 </div>
             </div>
             
@@ -547,6 +595,8 @@
             if (currentLineIndex >= bootLines.length) {
                 // Wait for keypress to continue
                 document.addEventListener('keydown', finishBoot, { once: true });
+                document.addEventListener('click', finishBoot, { once: true });
+                document.addEventListener('touchstart', finishBoot, { once: true });
                 return;
             }
             
@@ -623,6 +673,17 @@
             currentSection = null;
             playBeep();
         }
+        
+        // Click/tap handlers for menu items
+        menuItems.forEach((item, index) => {
+            item.addEventListener('click', () => {
+                if (!bootComplete) return;
+                selectedIndex = index;
+                updateSelection();
+                const section = item.dataset.section;
+                showSection(section);
+            });
+        });
         
         document.addEventListener('keydown', (e) => {
             if (!bootComplete) return;
