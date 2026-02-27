@@ -340,13 +340,21 @@
             
             .screen {
                 padding: 12px;
+                padding-bottom: 20px;
                 top: 5px;
                 left: 5px;
                 right: 5px;
-                bottom: 5px;
+                bottom: 15px;
                 border-radius: 10px;
                 display: flex;
                 flex-direction: column;
+            }
+            
+            /* Safe area for notched phones */
+            @supports (padding-bottom: env(safe-area-inset-bottom)) {
+                .screen {
+                    bottom: calc(15px + env(safe-area-inset-bottom));
+                }
             }
             
             .header {
