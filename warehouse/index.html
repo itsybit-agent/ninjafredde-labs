@@ -158,6 +158,147 @@
         
         /* Hidden when playing */
         .hidden { display: none !important; }
+        
+        /* ============================================
+           MOBILE TOUCH CONTROLS
+           ============================================ */
+        .mobile-controls {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            top: 0;
+            pointer-events: none;
+            z-index: 20;
+        }
+        
+        .touch-device .mobile-controls {
+            display: block;
+        }
+        
+        .touch-device #crosshair {
+            display: none !important;
+        }
+        
+        .touch-device #instructions {
+            display: none !important;
+        }
+        
+        /* Virtual Joystick */
+        .joystick-zone {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 140px;
+            height: 140px;
+            pointer-events: auto;
+        }
+        
+        .joystick-base {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        .joystick-thumb {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: rgba(255,255,255,0.4);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: background 0.1s;
+        }
+        
+        .joystick-thumb.active {
+            background: rgba(255,136,0,0.6);
+        }
+        
+        /* Look zone (right side) */
+        .look-zone {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 60%;
+            height: 100%;
+            pointer-events: auto;
+        }
+        
+        /* Action buttons */
+        .mobile-buttons {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            pointer-events: auto;
+        }
+        
+        .mobile-btn {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.4);
+            background: rgba(255,255,255,0.15);
+            color: #fff;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        
+        .mobile-btn:active {
+            background: rgba(255,136,0,0.4);
+            border-color: #f80;
+        }
+        
+        .mobile-btn.jump-btn {
+            font-size: 20px;
+        }
+        
+        .mobile-btn.action-btn {
+            background: rgba(255,136,0,0.2);
+            border-color: rgba(255,136,0,0.5);
+        }
+        
+        .mobile-btn.action-btn.throwing {
+            background: rgba(255,50,50,0.3);
+            border-color: rgba(255,50,50,0.6);
+        }
+        
+        /* Mobile narrator adjustment */
+        @media (max-width: 768px) {
+            #narrator {
+                bottom: 180px;
+                left: 10px;
+                right: 10px;
+                transform: none;
+                padding: 15px 20px;
+                font-size: 0.95em;
+            }
+            
+            #menu h1 {
+                font-size: 1.8em;
+            }
+            
+            #menu button {
+                padding: 12px 30px;
+                font-size: 1em;
+            }
+        }
     </style>
 </head>
 <body>
@@ -189,6 +330,28 @@
         <div id="narrator">
             <div class="speaker">CURATOR</div>
             <div class="text"></div>
+        </div>
+        
+        <!-- Mobile Touch Controls -->
+        <div class="mobile-controls hidden" id="mobile-controls">
+            <!-- Menu button (top right) -->
+            <button class="mobile-btn" id="mobile-menu-btn" style="position: absolute; top: 20px; right: 20px; width: 50px; height: 50px; font-size: 18px; pointer-events: auto;">☰</button>
+            
+            <!-- Virtual Joystick (left) -->
+            <div class="joystick-zone" id="joystick-zone">
+                <div class="joystick-base">
+                    <div class="joystick-thumb" id="joystick-thumb"></div>
+                </div>
+            </div>
+            
+            <!-- Look Zone (right side - invisible) -->
+            <div class="look-zone" id="look-zone"></div>
+            
+            <!-- Action Buttons (right) -->
+            <div class="mobile-buttons">
+                <button class="mobile-btn jump-btn" id="jump-btn">⬆️</button>
+                <button class="mobile-btn action-btn" id="action-btn">✋</button>
+            </div>
         </div>
     </div>
 
@@ -673,6 +836,7 @@
         
         document.getElementById('crosshair').classList.add('holding');
         narrate('pickup');
+        if (typeof updateMobileUI === 'function') updateMobileUI();
     }
     
     function dropObject() {
@@ -718,6 +882,7 @@
         }
         
         document.getElementById('crosshair').classList.remove('holding');
+        if (typeof updateMobileUI === 'function') updateMobileUI();
     }
     
     function updateHeldObject() {
@@ -803,9 +968,169 @@
     });
 
     renderer.domElement.addEventListener('click', () => {
-        if (state.playing && state.mode === 'freeroam' && !isLocked) {
+        if (state.playing && state.mode === 'freeroam' && !isLocked && !isTouchDevice) {
             renderer.domElement.requestPointerLock();
         }
+    });
+
+    // ============================================
+    // MOBILE TOUCH CONTROLS
+    // ============================================
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    
+    if (isTouchDevice) {
+        document.body.classList.add('touch-device');
+    }
+    
+    // Joystick state
+    const joystick = {
+        active: false,
+        startX: 0,
+        startY: 0,
+        currentX: 0,
+        currentY: 0,
+        maxRadius: 40
+    };
+    
+    // Look state
+    const touchLook = {
+        active: false,
+        lastX: 0,
+        lastY: 0,
+        sensitivity: 0.004
+    };
+    
+    const joystickZone = document.getElementById('joystick-zone');
+    const joystickThumb = document.getElementById('joystick-thumb');
+    const lookZone = document.getElementById('look-zone');
+    const jumpBtn = document.getElementById('jump-btn');
+    const actionBtn = document.getElementById('action-btn');
+    
+    // Joystick touch handlers
+    joystickZone?.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const rect = joystickZone.getBoundingClientRect();
+        joystick.active = true;
+        joystick.startX = rect.left + rect.width / 2;
+        joystick.startY = rect.top + rect.height / 2;
+        joystickThumb.classList.add('active');
+    }, { passive: false });
+    
+    joystickZone?.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (!joystick.active) return;
+        
+        const touch = e.touches[0];
+        let dx = touch.clientX - joystick.startX;
+        let dy = touch.clientY - joystick.startY;
+        
+        // Clamp to max radius
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > joystick.maxRadius) {
+            dx = (dx / dist) * joystick.maxRadius;
+            dy = (dy / dist) * joystick.maxRadius;
+        }
+        
+        // Update thumb position
+        joystickThumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        
+        // Update movement (-1 to 1)
+        movement.forward = -dy / joystick.maxRadius;
+        movement.right = dx / joystick.maxRadius;
+        
+        // Sprint if pushed far
+        movement.sprint = dist > joystick.maxRadius * 0.8;
+    }, { passive: false });
+    
+    joystickZone?.addEventListener('touchend', (e) => {
+        joystick.active = false;
+        joystickThumb.style.transform = 'translate(-50%, -50%)';
+        joystickThumb.classList.remove('active');
+        movement.forward = 0;
+        movement.right = 0;
+        movement.sprint = false;
+    });
+    
+    // Look zone touch handlers
+    lookZone?.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        touchLook.active = true;
+        touchLook.lastX = touch.clientX;
+        touchLook.lastY = touch.clientY;
+    }, { passive: false });
+    
+    lookZone?.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (!touchLook.active || !state.playing) return;
+        
+        const touch = e.touches[0];
+        const dx = touch.clientX - touchLook.lastX;
+        const dy = touch.clientY - touchLook.lastY;
+        
+        euler.setFromQuaternion(camera.quaternion);
+        euler.y -= dx * touchLook.sensitivity;
+        euler.x -= dy * touchLook.sensitivity;
+        euler.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, euler.x));
+        camera.quaternion.setFromEuler(euler);
+        
+        touchLook.lastX = touch.clientX;
+        touchLook.lastY = touch.clientY;
+    }, { passive: false });
+    
+    lookZone?.addEventListener('touchend', () => {
+        touchLook.active = false;
+    });
+    
+    // Tap on look zone to interact (pick up nearby object)
+    lookZone?.addEventListener('click', (e) => {
+        if (!state.playing || state.mode !== 'freeroam') return;
+        
+        if (player.holding) {
+            dropObject();
+        } else {
+            // Find object in front of camera
+            const target = getTargetCrate();
+            if (target) {
+                pickUp(target);
+            }
+        }
+    });
+    
+    // Jump button
+    jumpBtn?.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        movement.jump = true;
+    }, { passive: false });
+    
+    jumpBtn?.addEventListener('touchend', () => {
+        movement.jump = false;
+    });
+    
+    // Action button (throw when holding)
+    actionBtn?.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (player.holding) {
+            throwObject();
+        }
+    }, { passive: false });
+    
+    // Update action button appearance
+    function updateMobileUI() {
+        if (!actionBtn) return;
+        if (player.holding) {
+            actionBtn.textContent = '🚀';
+            actionBtn.classList.add('throwing');
+        } else {
+            actionBtn.textContent = '✋';
+            actionBtn.classList.remove('throwing');
+        }
+    }
+    
+    // Mobile menu button
+    document.getElementById('mobile-menu-btn')?.addEventListener('click', () => {
+        exitGame();
     });
 
     // ============================================
@@ -1116,10 +1441,17 @@
         
         if (mode === 'tour') {
             if (tourPath[0]?.action) tourPath[0].action();
+            // Hide mobile controls during tour
+            document.getElementById('mobile-controls')?.classList.add('hidden');
         } else {
             narrate('freeroam_intro');
             document.getElementById('instructions').classList.remove('hidden');
-            renderer.domElement.requestPointerLock();
+            // Show mobile controls on touch devices
+            if (isTouchDevice) {
+                document.getElementById('mobile-controls')?.classList.remove('hidden');
+            } else {
+                renderer.domElement.requestPointerLock();
+            }
         }
     };
 
@@ -1129,10 +1461,11 @@
         document.getElementById('menu').classList.remove('hidden');
         document.getElementById('crosshair').classList.add('hidden');
         document.getElementById('instructions').classList.add('hidden');
+        document.getElementById('mobile-controls')?.classList.add('hidden');
         narratorEl.classList.remove('visible');
         
         if (player.holding) {
-            player.holding.rigidBody.setBodyType(RAPIER.RigidBodyType.Dynamic);
+            player.holding.rigidBody.setEnabled(true);
             player.holding = null;
         }
     };
