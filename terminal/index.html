@@ -29,6 +29,7 @@
             line-height: 1.4;
             overflow: hidden;
             height: 100vh;
+            height: 100dvh;
         }
         
         /* CRT Monitor Effect */
@@ -36,7 +37,50 @@
             position: relative;
             width: 100%;
             height: 100vh;
+            height: 100dvh;
             overflow: hidden;
+        }
+        
+        /* CRT Screen Curvature & Distortion */
+        .crt-distortion {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            transform: perspective(1000px) rotateX(1deg);
+            transform-origin: center center;
+            border-radius: 30px / 20px;
+            overflow: hidden;
+        }
+        
+        /* Vignette effect (darker edges) */
+        .crt-distortion::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(
+                ellipse at center,
+                transparent 60%,
+                rgba(0, 0, 0, 0.4) 100%
+            );
+            pointer-events: none;
+            z-index: 999;
+        }
+        
+        /* Subtle screen wobble */
+        @keyframes crt-wobble {
+            0%, 100% { transform: perspective(1000px) rotateX(0.8deg) rotateY(0deg); }
+            25% { transform: perspective(1000px) rotateX(1deg) rotateY(0.1deg); }
+            50% { transform: perspective(1000px) rotateX(0.9deg) rotateY(-0.05deg); }
+            75% { transform: perspective(1000px) rotateX(1.1deg) rotateY(0.05deg); }
+        }
+        
+        .crt-distortion {
+            animation: crt-wobble 8s ease-in-out infinite;
         }
         
         /* Scanlines */
@@ -338,23 +382,27 @@
                 font-size: 14px;
             }
             
+            .crt {
+                height: 100%;
+                min-height: -webkit-fill-available;
+                padding: 5px;
+            }
+            
             .screen {
+                position: relative;
+                top: auto;
+                left: auto;
+                right: auto;
+                bottom: auto;
+                width: 100%;
+                height: 100%;
+                max-height: calc(100vh - 10px);
+                max-height: calc(100dvh - 10px);
                 padding: 12px;
-                padding-bottom: 20px;
-                top: 5px;
-                left: 5px;
-                right: 5px;
-                bottom: 15px;
                 border-radius: 10px;
                 display: flex;
                 flex-direction: column;
-            }
-            
-            /* Safe area for notched phones */
-            @supports (padding-bottom: env(safe-area-inset-bottom)) {
-                .screen {
-                    bottom: calc(15px + env(safe-area-inset-bottom));
-                }
+                overflow: hidden;
             }
             
             .header {
@@ -437,6 +485,7 @@
 </head>
 <body>
     <div class="crt">
+        <div class="crt-distortion">
         <div class="screen" id="screen">
             <!-- Header -->
             <div class="header post-boot">
@@ -606,6 +655,7 @@
                 <span id="status">STATUS: <span class="status-ok">ONLINE</span></span>
             </div>
         </div>
+        </div><!-- crt-distortion -->
     </div>
     
     <script>
