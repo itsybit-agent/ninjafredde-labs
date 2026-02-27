@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Blocky Dungeon</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background: #111;
+            overflow: hidden;
+            font-family: monospace;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        
+        #game {
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        /* Touch zones */
+        .touch-zones {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: grid;
+            grid-template-rows: 1fr 1fr;
+            grid-template-columns: 1fr 1fr;
+            pointer-events: auto;
+            z-index: 10;
+        }
+        
+        .touch-zone {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255,255,255,0.1);
+            font-size: 3em;
+            transition: background 0.1s;
+        }
+        
+        .touch-zone:active {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .zone-forward { grid-column: 1 / 3; }
+        .zone-left { }
+        .zone-right { }
+        
+        /* Minimal HUD */
+        #hud {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #666;
+            font-size: 12px;
+            z-index: 20;
+            text-align: center;
+        }
+        
+        /* Direction indicator */
+        #compass {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: #fff;
+            font-size: 24px;
+            z-index: 20;
+        }
+    </style>
+</head>
+<body>
+    <div id="game"></div>
+    
+    <div class="touch-zones">
+        <div class="touch-zone zone-forward" data-action="forward">↑</div>
+        <div class="touch-zone zone-left" data-action="left">←</div>
+        <div class="touch-zone zone-right" data-action="right">→</div>
+    </div>
+    
+    <div id="compass">N</div>
+    <div id="hud">TAP TO MOVE</div>
+    
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+        }
+    }
+    </script>
+    
+    <script type="module">
+    import * as THREE from 'three';
+    
+    // ============================================
+    // GAME CONFIG
+    // ============================================
+    const GRID_SIZE = 10;
+    const CELL_SIZE = 2;
+    const MOVE_SPEED = 0.15;
+    const TURN_SPEED = 0.12;
+    
+    // Direction vectors (N, E, S, W)
+    const DIRECTIONS = [
+        { x: 0, z: -1, name: 'N' },  // North
+        { x: 1, z: 0, name: 'E' },   // East
+        { x: 0, z: 1, name: 'S' },   // South
+        { x: -1, z: 0, name: 'W' }   // West
+    ];
+    
+    // ============================================
+    // PLAYER STATE
+    // ============================================
+    const player = {
+        gridX: 1,
+        gridZ: 1,
+        dir: 0,  // 0=N, 1=E, 2=S, 3=W
+        // Rendering position (lerped)
+        x: 0,
+        z: 0,
+        rotation: 0,
+        // Target position
+        targetX: 0,
+        targetZ: 0,
+        targetRotation: 0,
+        // State
+        moving: false
+    };
+    
+    // ============================================
+    // MAZE GENERATION
+    // ============================================
+    let maze = [];
+    
+    function generateMaze() {
+        // Initialize with walls
+        maze = Array(GRID_SIZE).fill(null).map(() => 
+            Array(GRID_SIZE).fill(1)
+        );
+        
+        // Simple recursive backtracking maze
+        const stack = [];
+        const startX = 1;
+        const startZ = 1;
+        
+        maze[startZ][startX] = 0;
+        stack.push({ x: startX, z: startZ });
+        
+        while (stack.length > 0) {
+            const current = stack[stack.length - 1];
+            const neighbors = getUnvisitedNeighbors(current.x, current.z);
+            
+            if (neighbors.length === 0) {
+                stack.pop();
+            } else {
+                const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+                
+                // Remove wall between current and next
+                const wallX = current.x + (next.x - current.x) / 2;
+                const wallZ = current.z + (next.z - current.z) / 2;
+                maze[wallZ][wallX] = 0;
+                maze[next.z][next.x] = 0;
+                
+                stack.push(next);
+            }
+        }
+        
+        // Ensure start position is clear
+        maze[1][1] = 0;
+    }
+    
+    function getUnvisitedNeighbors(x, z) {
+        const neighbors = [];
+        const dirs = [
+            { x: 0, z: -2 },
+            { x: 2, z: 0 },
+            { x: 0, z: 2 },
+            { x: -2, z: 0 }
+        ];
+        
+        for (const dir of dirs) {
+            const nx = x + dir.x;
+            const nz = z + dir.z;
+            
+            if (nx > 0 && nx < GRID_SIZE - 1 && 
+                nz > 0 && nz < GRID_SIZE - 1 && 
+                maze[nz][nx] === 1) {
+                neighbors.push({ x: nx, z: nz });
+            }
+        }
+        
+        return neighbors;
+    }
+    
+    function isWall(x, z) {
+        if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) return true;
+        return maze[z][x] === 1;
+    }
+    
+    // ============================================
+    // THREE.JS SETUP
+    // ============================================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111111);
+    scene.fog = new THREE.Fog(0x111111, 2, 12);
+    
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.getElementById('game').appendChild(renderer.domElement);
+    
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    scene.add(ambientLight);
+    
+    const playerLight = new THREE.PointLight(0xffffff, 1, 8);
+    playerLight.position.set(0, 1, 0);
+    scene.add(playerLight);
+    
+    // Materials
+    const wallMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffffff,
+        roughness: 0.9
+    });
+    
+    const floorMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x333333,
+        roughness: 0.95
+    });
+    
+    // ============================================
+    // BUILD LEVEL
+    // ============================================
+    function buildLevel() {
+        // Clear existing
+        while (scene.children.length > 2) {
+            scene.remove(scene.children[2]);
+        }
+        
+        // Floor
+        const floorGeom = new THREE.PlaneGeometry(GRID_SIZE * CELL_SIZE, GRID_SIZE * CELL_SIZE);
+        const floor = new THREE.Mesh(floorGeom, floorMaterial);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.set(GRID_SIZE * CELL_SIZE / 2 - CELL_SIZE / 2, 0, GRID_SIZE * CELL_SIZE / 2 - CELL_SIZE / 2);
+        scene.add(floor);
+        
+        // Ceiling
+        const ceiling = new THREE.Mesh(floorGeom, floorMaterial);
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.set(GRID_SIZE * CELL_SIZE / 2 - CELL_SIZE / 2, CELL_SIZE, GRID_SIZE * CELL_SIZE / 2 - CELL_SIZE / 2);
+        scene.add(ceiling);
+        
+        // Walls
+        const wallGeom = new THREE.BoxGeometry(CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        
+        for (let z = 0; z < GRID_SIZE; z++) {
+            for (let x = 0; x < GRID_SIZE; x++) {
+                if (maze[z][x] === 1) {
+                    const wall = new THREE.Mesh(wallGeom, wallMaterial);
+                    wall.position.set(
+                        x * CELL_SIZE,
+                        CELL_SIZE / 2,
+                        z * CELL_SIZE
+                    );
+                    scene.add(wall);
+                }
+            }
+        }
+    }
+    
+    // ============================================
+    // PLAYER MOVEMENT
+    // ============================================
+    function moveForward() {
+        if (player.moving) return;
+        
+        const dir = DIRECTIONS[player.dir];
+        const newX = player.gridX + dir.x;
+        const newZ = player.gridZ + dir.z;
+        
+        if (!isWall(newX, newZ)) {
+            player.gridX = newX;
+            player.gridZ = newZ;
+            player.targetX = newX * CELL_SIZE;
+            player.targetZ = newZ * CELL_SIZE;
+            player.moving = true;
+        }
+    }
+    
+    function moveBackward() {
+        if (player.moving) return;
+        
+        const dir = DIRECTIONS[player.dir];
+        const newX = player.gridX - dir.x;
+        const newZ = player.gridZ - dir.z;
+        
+        if (!isWall(newX, newZ)) {
+            player.gridX = newX;
+            player.gridZ = newZ;
+            player.targetX = newX * CELL_SIZE;
+            player.targetZ = newZ * CELL_SIZE;
+            player.moving = true;
+        }
+    }
+    
+    function turnLeft() {
+        if (player.moving) return;
+        
+        player.dir = (player.dir + 3) % 4;
+        player.targetRotation = player.dir * Math.PI / 2;
+        player.moving = true;
+        updateCompass();
+    }
+    
+    function turnRight() {
+        if (player.moving) return;
+        
+        player.dir = (player.dir + 1) % 4;
+        player.targetRotation = player.dir * Math.PI / 2;
+        player.moving = true;
+        updateCompass();
+    }
+    
+    function updateCompass() {
+        document.getElementById('compass').textContent = DIRECTIONS[player.dir].name;
+    }
+    
+    // ============================================
+    // INPUT HANDLING
+    // ============================================
+    document.querySelectorAll('.touch-zone').forEach(zone => {
+        zone.addEventListener('click', (e) => {
+            const action = zone.dataset.action;
+            if (action === 'forward') moveForward();
+            else if (action === 'back') moveBackward();
+            else if (action === 'left') turnLeft();
+            else if (action === 'right') turnRight();
+        });
+        
+        // Touch feedback
+        zone.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            zone.style.background = 'rgba(255,255,255,0.1)';
+        }, { passive: false });
+        
+        zone.addEventListener('touchend', () => {
+            zone.style.background = '';
+        });
+    });
+    
+    // Keyboard support
+    document.addEventListener('keydown', (e) => {
+        switch (e.key) {
+            case 'ArrowUp':
+            case 'w':
+            case 'W':
+                moveForward();
+                break;
+            case 'ArrowDown':
+            case 's':
+            case 'S':
+                moveBackward();
+                break;
+            case 'ArrowLeft':
+            case 'a':
+            case 'A':
+                turnLeft();
+                break;
+            case 'ArrowRight':
+            case 'd':
+            case 'D':
+                turnRight();
+                break;
+        }
+    });
+    
+    // ============================================
+    // GAME LOOP
+    // ============================================
+    function lerp(a, b, t) {
+        return a + (b - a) * t;
+    }
+    
+    function lerpAngle(a, b, t) {
+        // Handle angle wrapping
+        let diff = b - a;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        return a + diff * t;
+    }
+    
+    function update() {
+        // Lerp position
+        player.x = lerp(player.x, player.targetX, MOVE_SPEED);
+        player.z = lerp(player.z, player.targetZ, MOVE_SPEED);
+        player.rotation = lerpAngle(player.rotation, player.targetRotation, TURN_SPEED);
+        
+        // Check if movement complete
+        const posDiff = Math.abs(player.x - player.targetX) + Math.abs(player.z - player.targetZ);
+        const rotDiff = Math.abs(player.rotation - player.targetRotation);
+        
+        if (posDiff < 0.01 && rotDiff < 0.01) {
+            player.x = player.targetX;
+            player.z = player.targetZ;
+            player.rotation = player.targetRotation;
+            player.moving = false;
+        }
+        
+        // Update camera
+        camera.position.set(player.x, 1, player.z);
+        camera.rotation.y = -player.rotation;
+        
+        // Update light position
+        playerLight.position.set(player.x, 1.5, player.z);
+    }
+    
+    function animate() {
+        requestAnimationFrame(animate);
+        update();
+        renderer.render(scene, camera);
+    }
+    
+    // ============================================
+    // INIT
+    // ============================================
+    function init() {
+        generateMaze();
+        buildLevel();
+        
+        // Set initial position
+        player.gridX = 1;
+        player.gridZ = 1;
+        player.x = player.gridX * CELL_SIZE;
+        player.z = player.gridZ * CELL_SIZE;
+        player.targetX = player.x;
+        player.targetZ = player.z;
+        player.rotation = 0;
+        player.targetRotation = 0;
+        player.dir = 0;
+        
+        updateCompass();
+        animate();
+    }
+    
+    // Handle resize
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    
+    init();
+    </script>
+</body>
+</html>

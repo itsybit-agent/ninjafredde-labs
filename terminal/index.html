@@ -48,7 +48,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            transform: perspective(1000px) rotateX(1deg);
+            transform: perspective(400px) rotateX(2deg);
             transform-origin: center center;
             border-radius: 30px / 20px;
             overflow: hidden;
@@ -73,10 +73,10 @@
         
         /* Subtle screen wobble */
         @keyframes crt-wobble {
-            0%, 100% { transform: perspective(1000px) rotateX(0.8deg) rotateY(0deg); }
-            25% { transform: perspective(1000px) rotateX(1deg) rotateY(0.1deg); }
-            50% { transform: perspective(1000px) rotateX(0.9deg) rotateY(-0.05deg); }
-            75% { transform: perspective(1000px) rotateX(1.1deg) rotateY(0.05deg); }
+            0%, 100% { transform: perspective(400px) rotateX(2deg) rotateY(0deg); }
+            25% { transform: perspective(400px) rotateX(2.5deg) rotateY(0.2deg); }
+            50% { transform: perspective(400px) rotateX(2.2deg) rotateY(-0.1deg); }
+            75% { transform: perspective(400px) rotateX(2.8deg) rotateY(0.1deg); }
         }
         
         .crt-distortion {
