@@ -20,10 +20,19 @@
             width: 100vw;
             height: 100vh;
             height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
         }
         
         canvas {
             display: block;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: contain;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
         }
         
         /* Touch zones */
@@ -91,6 +100,25 @@
     
     <div id="compass">N</div>
     <div id="hud">TAP TO MOVE</div>
+    <div id="players" style="position:fixed;top:20px;left:20px;color:#666;font-size:12px;z-index:20;">👻 0</div>
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyD2_FKxdgTZOasO6O1bBRvymPxFp97lmf8",
+            authDomain: "ninjadunge.firebaseapp.com",
+            databaseURL: "https://ninjadunge-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "ninjadunge",
+            storageBucket: "ninjadunge.firebasestorage.app",
+            messagingSenderId: "387089373471",
+            appId: "1:387089373471:web:ca5259f1698fe8f6ee382a"
+        };
+        firebase.initializeApp(firebaseConfig);
+        window.db = firebase.database();
+        window.playerId = 'p_' + Math.random().toString(36).substr(2, 9);
+    </script>
     
     <script type="importmap">
     {
@@ -108,8 +136,8 @@
     // ============================================
     const GRID_SIZE = 10;
     const CELL_SIZE = 2;
-    const MOVE_SPEED = 0.15;
-    const TURN_SPEED = 0.12;
+    const MOVE_SPEED = 0.2;
+    const TURN_SPEED = 0.18;
     
     // Direction vectors (N, E, S, W)
     const DIRECTIONS = [
@@ -176,8 +204,11 @@
             }
         }
         
-        // Ensure start position is clear
+        // Ensure spawn area is clear (2x2 around start)
         maze[1][1] = 0;
+        maze[1][2] = 0;
+        maze[2][1] = 0;
+        maze[2][2] = 0;
     }
     
     function getUnvisitedNeighbors(x, z) {
@@ -213,20 +244,24 @@
     // ============================================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x111111);
-    scene.fog = new THREE.Fog(0x111111, 2, 12);
+    scene.fog = new THREE.Fog(0x111111, 4, 18);
     
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+    // Retro resolution
+    const RENDER_WIDTH = 320;
+    const RENDER_HEIGHT = 240;
     
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const camera = new THREE.PerspectiveCamera(75, RENDER_WIDTH / RENDER_HEIGHT, 0.1, 100);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setSize(RENDER_WIDTH, RENDER_HEIGHT);
+    renderer.setPixelRatio(1);
     document.getElementById('game').appendChild(renderer.domElement);
     
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    const ambientLight = new THREE.AmbientLight(0x666666, 1);
     scene.add(ambientLight);
     
-    const playerLight = new THREE.PointLight(0xffffff, 1, 8);
+    const playerLight = new THREE.PointLight(0xffffee, 2, 15);
     playerLight.position.set(0, 1, 0);
     scene.add(playerLight);
     
@@ -342,23 +377,29 @@
     // INPUT HANDLING
     // ============================================
     document.querySelectorAll('.touch-zone').forEach(zone => {
-        zone.addEventListener('click', (e) => {
-            const action = zone.dataset.action;
+        const action = zone.dataset.action;
+        
+        // Handle both touch and click
+        const doAction = () => {
+            console.log('Action:', action);
             if (action === 'forward') moveForward();
             else if (action === 'back') moveBackward();
             else if (action === 'left') turnLeft();
             else if (action === 'right') turnRight();
-        });
+        };
         
-        // Touch feedback
+        zone.addEventListener('click', doAction);
+        
         zone.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            zone.style.background = 'rgba(255,255,255,0.1)';
+            zone.style.background = 'rgba(255,255,255,0.2)';
+            doAction();
         }, { passive: false });
         
-        zone.addEventListener('touchend', () => {
+        zone.addEventListener('touchend', (e) => {
+            e.preventDefault();
             zone.style.background = '';
-        });
+        }, { passive: false });
     });
     
     // Keyboard support
@@ -402,6 +443,8 @@
         return a + diff * t;
     }
     
+    let moveTimer = 0;
+    
     function update() {
         // Lerp position
         player.x = lerp(player.x, player.targetX, MOVE_SPEED);
@@ -412,11 +455,16 @@
         const posDiff = Math.abs(player.x - player.targetX) + Math.abs(player.z - player.targetZ);
         const rotDiff = Math.abs(player.rotation - player.targetRotation);
         
-        if (posDiff < 0.01 && rotDiff < 0.01) {
-            player.x = player.targetX;
-            player.z = player.targetZ;
-            player.rotation = player.targetRotation;
-            player.moving = false;
+        if (player.moving) {
+            moveTimer++;
+            // Complete if close enough OR timeout (safety)
+            if ((posDiff < 0.05 && rotDiff < 0.05) || moveTimer > 60) {
+                player.x = player.targetX;
+                player.z = player.targetZ;
+                player.rotation = player.targetRotation;
+                player.moving = false;
+                moveTimer = 0;
+            }
         }
         
         // Update camera
@@ -430,6 +478,7 @@
     function animate() {
         requestAnimationFrame(animate);
         update();
+        updateGhosts();
         renderer.render(scene, camera);
     }
     
@@ -440,29 +489,132 @@
         generateMaze();
         buildLevel();
         
-        // Set initial position
+        // Set initial position - start facing South (into the maze)
         player.gridX = 1;
         player.gridZ = 1;
+        player.dir = 2; // South
         player.x = player.gridX * CELL_SIZE;
         player.z = player.gridZ * CELL_SIZE;
         player.targetX = player.x;
         player.targetZ = player.z;
-        player.rotation = 0;
-        player.targetRotation = 0;
-        player.dir = 0;
+        player.rotation = player.dir * Math.PI / 2;
+        player.targetRotation = player.rotation;
         
         updateCompass();
         animate();
+        
+        console.log('Maze generated, player at', player.gridX, player.gridZ, 'facing', DIRECTIONS[player.dir].name);
     }
     
-    // Handle resize
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+    // Fixed resolution - no resize needed
+    // That chunky 320x240 goodness stays chunky!
+    
+    // ============================================
+    // MULTIPLAYER - Ghost Lights
+    // ============================================
+    const otherPlayers = {};  // id -> { light, x, z, lastSeen }
+    const GHOST_COLOR = 0xff6600;
+    const STALE_TIMEOUT = 30000;  // 30 seconds
+    
+    // Update our position in Firebase
+    function broadcastPosition() {
+        if (!window.db) return;
+        
+        const playerRef = window.db.ref('players/' + window.playerId);
+        playerRef.set({
+            x: player.x,
+            z: player.z,
+            dir: player.dir,
+            timestamp: Date.now()
+        });
+        
+        // Remove ourselves when we leave
+        playerRef.onDisconnect().remove();
+    }
+    
+    // Listen for other players
+    function setupMultiplayer() {
+        if (!window.db) {
+            console.log('Firebase not available');
+            return;
+        }
+        
+        const playersRef = window.db.ref('players');
+        
+        // Listen for changes
+        playersRef.on('value', (snapshot) => {
+            const data = snapshot.val() || {};
+            const now = Date.now();
+            let count = 0;
+            
+            // Update or create lights for other players
+            for (const id in data) {
+                if (id === window.playerId) continue;  // Skip self
+                
+                const p = data[id];
+                if (now - p.timestamp > STALE_TIMEOUT) continue;  // Skip stale
+                
+                count++;
+                
+                if (!otherPlayers[id]) {
+                    // Create new ghost light
+                    const light = new THREE.PointLight(GHOST_COLOR, 1.5, 8);
+                    light.position.set(p.x, 1.2, p.z);
+                    scene.add(light);
+                    otherPlayers[id] = { light, x: p.x, z: p.z, lastSeen: now };
+                } else {
+                    // Update position (lerp for smooth movement)
+                    otherPlayers[id].x = p.x;
+                    otherPlayers[id].z = p.z;
+                    otherPlayers[id].lastSeen = now;
+                }
+            }
+            
+            // Remove stale players
+            for (const id in otherPlayers) {
+                if (!data[id] || now - data[id].timestamp > STALE_TIMEOUT) {
+                    scene.remove(otherPlayers[id].light);
+                    delete otherPlayers[id];
+                }
+            }
+            
+            // Update player count
+            document.getElementById('players').textContent = '👻 ' + count;
+        });
+        
+        // Broadcast position every 500ms
+        setInterval(broadcastPosition, 500);
+        
+        // Cleanup stale entries periodically (only one client needs to do this)
+        setInterval(() => {
+            const now = Date.now();
+            playersRef.once('value', (snapshot) => {
+                const data = snapshot.val() || {};
+                for (const id in data) {
+                    if (now - data[id].timestamp > STALE_TIMEOUT) {
+                        window.db.ref('players/' + id).remove();
+                    }
+                }
+            });
+        }, 10000);
+        
+        console.log('Multiplayer enabled! Player ID:', window.playerId);
+    }
+    
+    // Lerp ghost lights in update loop
+    function updateGhosts() {
+        for (const id in otherPlayers) {
+            const ghost = otherPlayers[id];
+            ghost.light.position.x += (ghost.x - ghost.light.position.x) * 0.1;
+            ghost.light.position.z += (ghost.z - ghost.light.position.z) * 0.1;
+            
+            // Flicker effect
+            ghost.light.intensity = 1.2 + Math.sin(Date.now() * 0.01 + parseInt(id, 36)) * 0.3;
+        }
+    }
     
     init();
+    setupMultiplayer();
     </script>
 </body>
 </html>
