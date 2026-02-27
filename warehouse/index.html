@@ -192,24 +192,32 @@
         </div>
     </div>
 
-    <!-- Three.js -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <!-- Import Map for ES Modules -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
     
     <script type="module">
     // ============================================
     // IMPORTS
     // ============================================
+    import * as THREE from 'three';
     import RAPIER from 'https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.12.0/+esm';
     
     // Post-processing
-    import { EffectComposer } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js';
-    import { RenderPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/RenderPass.js';
-    import { SSAOPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/SSAOPass.js';
-    import { OutputPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/OutputPass.js';
-    import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
     
     // GLTF loader for model imports
-    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
     // ============================================
     // LEVEL LOADER (Blender → Three.js + Rapier)
@@ -466,7 +474,9 @@
     // INIT PHYSICS
     // ============================================
     async function initPhysics() {
+        console.log('Initializing RAPIER...');
         await RAPIER.init();
+        console.log('RAPIER initialized!');
         
         const gravity = { x: 0.0, y: -20, z: 0.0 }; // Slightly stronger gravity
         world = new RAPIER.World(gravity);
@@ -1145,9 +1155,18 @@
     // ============================================
     // INIT
     // ============================================
+    console.log('Starting physics init...');
     initPhysics().then(() => {
+        console.log('Physics ready!');
         createStaticObjects();
         animate();
+    }).catch((err) => {
+        console.error('Physics failed to load:', err);
+        document.getElementById('loading').innerHTML = `
+            <h2 style="color: #f80;">Physics failed to load</h2>
+            <p style="color: #888; margin-top: 10px;">${err.message || err}</p>
+            <p style="color: #666; margin-top: 20px;">Try refreshing the page</p>
+        `;
     });
     </script>
 </body>
