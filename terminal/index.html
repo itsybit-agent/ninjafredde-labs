@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WEYLAND-YUTANI CORP // TERMINAL</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --phosphor: #33ff33;
+            --phosphor-dim: #1a8c1a;
+            --phosphor-glow: rgba(51, 255, 51, 0.6);
+            --bg: #0a0a0a;
+            --scanline: rgba(0, 0, 0, 0.15);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: var(--bg);
+            color: var(--phosphor);
+            font-family: 'VT323', monospace;
+            font-size: 18px;
+            line-height: 1.4;
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        /* CRT Monitor Effect */
+        .crt {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* Scanlines */
+        .crt::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                var(--scanline) 2px,
+                var(--scanline) 4px
+            );
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        /* Screen flicker */
+        .crt::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(51, 255, 51, 0.02);
+            pointer-events: none;
+            z-index: 999;
+            animation: flicker 0.15s infinite;
+        }
+        
+        @keyframes flicker {
+            0% { opacity: 0.97; }
+            50% { opacity: 1; }
+            100% { opacity: 0.98; }
+        }
+        
+        /* Screen curvature (subtle) */
+        .screen {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            bottom: 20px;
+            background: var(--bg);
+            border: 2px solid var(--phosphor-dim);
+            border-radius: 20px;
+            padding: 30px;
+            overflow: hidden;
+            box-shadow: 
+                inset 0 0 100px rgba(51, 255, 51, 0.05),
+                0 0 20px rgba(51, 255, 51, 0.1);
+        }
+        
+        /* Text glow effect */
+        .glow {
+            text-shadow: 
+                0 0 5px var(--phosphor-glow),
+                0 0 10px var(--phosphor-glow),
+                0 0 20px var(--phosphor-glow);
+        }
+        
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 1px solid var(--phosphor-dim);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .logo {
+            font-size: 14px;
+            line-height: 1.2;
+        }
+        
+        .logo-icon {
+            font-size: 32px;
+            letter-spacing: -2px;
+        }
+        
+        .datetime {
+            text-align: right;
+            font-size: 24px;
+        }
+        
+        .datetime .date {
+            font-size: 14px;
+            color: var(--phosphor-dim);
+        }
+        
+        /* Main content area */
+        .content {
+            height: calc(100% - 120px);
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        
+        .content::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .content::-webkit-scrollbar-track {
+            background: var(--bg);
+        }
+        
+        .content::-webkit-scrollbar-thumb {
+            background: var(--phosphor-dim);
+        }
+        
+        /* Boot sequence */
+        .boot-line {
+            opacity: 0;
+            animation: boot-appear 0.05s forwards;
+        }
+        
+        @keyframes boot-appear {
+            to { opacity: 1; }
+        }
+        
+        /* Menu */
+        .menu {
+            display: none;
+        }
+        
+        .menu.active {
+            display: block;
+        }
+        
+        .menu-item {
+            padding: 8px 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .menu-item:hover,
+        .menu-item.selected {
+            background: var(--phosphor);
+            color: var(--bg);
+        }
+        
+        .menu-item .key {
+            min-width: 30px;
+            padding: 2px 8px;
+            border: 1px solid currentColor;
+            text-align: center;
+        }
+        
+        .menu-item.selected .key {
+            border-color: var(--bg);
+        }
+        
+        /* Sections */
+        .section {
+            display: none;
+            animation: fadeIn 0.3s;
+        }
+        
+        .section.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .section-title {
+            font-size: 24px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--phosphor-dim);
+        }
+        
+        .section p {
+            margin-bottom: 15px;
+        }
+        
+        /* Footer / Command line */
+        .footer {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            right: 30px;
+            border-top: 1px solid var(--phosphor-dim);
+            padding-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            color: var(--phosphor-dim);
+        }
+        
+        .footer .active {
+            color: var(--phosphor);
+        }
+        
+        /* Cursor blink */
+        .cursor {
+            display: inline-block;
+            width: 10px;
+            height: 18px;
+            background: var(--phosphor);
+            animation: blink 1s step-end infinite;
+            vertical-align: text-bottom;
+        }
+        
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+        
+        /* Typing effect */
+        .typing {
+            overflow: hidden;
+            white-space: nowrap;
+            border-right: 2px solid var(--phosphor);
+            animation: typing 0.5s steps(20) forwards, blink-caret 0.75s step-end infinite;
+        }
+        
+        @keyframes typing {
+            from { width: 0; }
+            to { width: 100%; }
+        }
+        
+        @keyframes blink-caret {
+            50% { border-color: transparent; }
+        }
+        
+        /* Status indicators */
+        .status-ok { color: var(--phosphor); }
+        .status-warn { color: #ffaa00; }
+        .status-error { color: #ff3333; }
+        
+        /* Data display */
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px dotted var(--phosphor-dim);
+        }
+        
+        .data-row .label {
+            color: var(--phosphor-dim);
+        }
+        
+        /* ASCII art */
+        .ascii {
+            font-size: 10px;
+            line-height: 1.1;
+            white-space: pre;
+            color: var(--phosphor-dim);
+        }
+        
+        /* Hidden until boot complete */
+        .post-boot {
+            display: none;
+        }
+        
+        .boot-complete .post-boot {
+            display: block;
+        }
+        
+        .boot-complete .boot-sequence {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="crt">
+        <div class="screen" id="screen">
+            <!-- Header -->
+            <div class="header post-boot">
+                <div class="logo">
+                    <div class="logo-icon glow">\\\V///</div>
+                    <div>WEYLAND-YUTANI CORP</div>
+                    <div style="color: var(--phosphor-dim)">BUILDING BETTER WORLDS</div>
+                </div>
+                <div class="datetime">
+                    <div class="glow" id="time">00:00:00</div>
+                    <div class="date" id="date">2122.06.03</div>
+                </div>
+            </div>
+            
+            <!-- Boot Sequence -->
+            <div class="content boot-sequence" id="boot">
+                <!-- Populated by JS -->
+            </div>
+            
+            <!-- Main Menu -->
+            <div class="content post-boot">
+                <div class="menu active" id="main-menu">
+                    <div style="margin-bottom: 20px; color: var(--phosphor-dim)">
+                        MAIN INTERFACE // SELECT OPTION
+                    </div>
+                    <div class="menu-item selected" data-key="1" data-section="archives">
+                        <span class="key">1</span>
+                        <span>ARCHIVES // PROJECT DATABASE</span>
+                    </div>
+                    <div class="menu-item" data-key="2" data-section="personnel">
+                        <span class="key">2</span>
+                        <span>PERSONNEL // CREW MANIFEST</span>
+                    </div>
+                    <div class="menu-item" data-key="3" data-section="systems">
+                        <span class="key">3</span>
+                        <span>SYSTEMS // DIAGNOSTICS</span>
+                    </div>
+                    <div class="menu-item" data-key="4" data-section="comms">
+                        <span class="key">4</span>
+                        <span>COMMUNICATIONS // MESSAGES</span>
+                    </div>
+                    <div class="menu-item" data-key="5" data-section="classified">
+                        <span class="key">5</span>
+                        <span>CLASSIFIED // [RESTRICTED]</span>
+                    </div>
+                </div>
+                
+                <!-- Archives Section -->
+                <div class="section" id="archives">
+                    <div class="section-title">ARCHIVES // PROJECT DATABASE</div>
+                    <p>ACCESSING WEYLAND-YUTANI DEVELOPMENT ARCHIVES...</p>
+                    <div class="data-row">
+                        <span class="label">PROJECT PROMETHEUS</span>
+                        <span class="status-warn">[CLASSIFIED]</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">LV-426 SURVEY</span>
+                        <span class="status-ok">[COMPLETE]</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">SYNTHETIC DEVELOPMENT</span>
+                        <span class="status-ok">[ONGOING]</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">SPECIAL ORDER 937</span>
+                        <span class="status-error">[EYES ONLY]</span>
+                    </div>
+                    <p style="margin-top: 30px; color: var(--phosphor-dim)">
+                        [ESC] RETURN TO MAIN MENU
+                    </p>
+                </div>
+                
+                <!-- Personnel Section -->
+                <div class="section" id="personnel">
+                    <div class="section-title">PERSONNEL // CREW MANIFEST</div>
+                    <div class="data-row">
+                        <span>CAPTAIN</span>
+                        <span>DALLAS, A.J.</span>
+                    </div>
+                    <div class="data-row">
+                        <span>EXECUTIVE OFFICER</span>
+                        <span>KANE, G.W.</span>
+                    </div>
+                    <div class="data-row">
+                        <span>WARRANT OFFICER</span>
+                        <span>RIPLEY, E.L.</span>
+                    </div>
+                    <div class="data-row">
+                        <span>NAVIGATOR</span>
+                        <span>LAMBERT, J.M.</span>
+                    </div>
+                    <div class="data-row">
+                        <span>SCIENCE OFFICER</span>
+                        <span>ASH</span>
+                    </div>
+                    <div class="data-row">
+                        <span>ENGINEERS</span>
+                        <span>PARKER, D. / BRETT, S.E.</span>
+                    </div>
+                    <p style="margin-top: 30px; color: var(--phosphor-dim)">
+                        [ESC] RETURN TO MAIN MENU
+                    </p>
+                </div>
+                
+                <!-- Systems Section -->
+                <div class="section" id="systems">
+                    <div class="section-title">SYSTEMS // DIAGNOSTICS</div>
+                    <div class="data-row">
+                        <span class="label">PROCESSOR</span>
+                        <span class="status-ok">MU-TH-UR 6000 // ONLINE</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">MEMORY</span>
+                        <span>2.1 TB // 78% UTILIZED</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">NETWORK</span>
+                        <span class="status-ok">CONNECTED // 128 KBPS</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">LIFE SUPPORT</span>
+                        <span class="status-ok">NOMINAL</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">HULL INTEGRITY</span>
+                        <span class="status-ok">98.7%</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">HYPERDRIVE</span>
+                        <span class="status-warn">STANDBY</span>
+                    </div>
+                    <p style="margin-top: 30px; color: var(--phosphor-dim)">
+                        [ESC] RETURN TO MAIN MENU
+                    </p>
+                </div>
+                
+                <!-- Comms Section -->
+                <div class="section" id="comms">
+                    <div class="section-title">COMMUNICATIONS // MESSAGES</div>
+                    <p class="status-warn">NO NEW TRANSMISSIONS</p>
+                    <p>LAST RECEIVED: 2122.05.28 // ROUTINE CHECK-IN</p>
+                    <p>NEXT SCHEDULED: 2122.06.15 // AUTO-BEACON</p>
+                    <div style="margin-top: 30px; padding: 15px; border: 1px solid var(--phosphor-dim);">
+                        <div style="color: var(--phosphor-dim); margin-bottom: 10px;">OUTGOING SIGNAL BUFFER:</div>
+                        <div>_ <span class="cursor"></span></div>
+                    </div>
+                    <p style="margin-top: 30px; color: var(--phosphor-dim)">
+                        [ESC] RETURN TO MAIN MENU
+                    </p>
+                </div>
+                
+                <!-- Classified Section -->
+                <div class="section" id="classified">
+                    <div class="section-title status-error">⚠ CLASSIFIED // AUTHORIZATION REQUIRED</div>
+                    <pre class="ascii">
+    ██████╗ ███████╗███╗   ██╗██╗███████╗██████╗ 
+    ██╔══██╗██╔════╝████╗  ██║██║██╔════╝██╔══██╗
+    ██║  ██║█████╗  ██╔██╗ ██║██║█████╗  ██║  ██║
+    ██║  ██║██╔══╝  ██║╚██╗██║██║██╔══╝  ██║  ██║
+    ██████╔╝███████╗██║ ╚████║██║███████╗██████╔╝
+    ╚═════╝ ╚══════╝╚═╝  ╚═══╝╚═╝╚══════╝╚═════╝ 
+                    </pre>
+                    <p class="status-error" style="margin-top: 20px;">
+                        ACCESS DENIED // CLEARANCE LEVEL 6 REQUIRED
+                    </p>
+                    <p>INCIDENT LOGGED // TERMINAL 7G</p>
+                    <p style="margin-top: 30px; color: var(--phosphor-dim)">
+                        [ESC] RETURN TO MAIN MENU
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div class="footer post-boot">
+                <span>TERMINAL 7G // DECK C</span>
+                <span>[1-5] SELECT <span class="active">[ESC] BACK</span> [↑↓] NAVIGATE</span>
+                <span id="status">STATUS: <span class="status-ok">ONLINE</span></span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // ============================================
+        // BOOT SEQUENCE
+        // ============================================
+        const bootLines = [
+            { text: '', delay: 500 },
+            { text: 'WEYLAND-YUTANI CORP', delay: 100 },
+            { text: 'INTERFACE 2037 // BUILD 6.22.79', delay: 100 },
+            { text: '', delay: 300 },
+            { text: 'INITIALIZING SYSTEM...', delay: 800 },
+            { text: '', delay: 200 },
+            { text: 'MEMORY TEST: 2147483648 BYTES OK', delay: 150 },
+            { text: 'LOADING KERNEL................ OK', delay: 200 },
+            { text: 'MOUNTING DRIVES............... OK', delay: 150 },
+            { text: 'NETWORK INTERFACE............. OK', delay: 100 },
+            { text: 'SECURITY PROTOCOLS............ OK', delay: 100 },
+            { text: '', delay: 200 },
+            { text: 'ESTABLISHING UPLINK TO MU-TH-UR 6000', delay: 400 },
+            { text: '> HANDSHAKE INITIATED', delay: 300 },
+            { text: '> AUTHENTICATION: ************', delay: 200 },
+            { text: '> CLEARANCE: LEVEL 2 // GRANTED', delay: 300 },
+            { text: '', delay: 200 },
+            { text: 'LOADING USER INTERFACE.........', delay: 600 },
+            { text: '', delay: 300 },
+            { text: '========================================', delay: 100 },
+            { text: 'SYSTEM READY // PRESS ANY KEY TO CONTINUE', delay: 0 },
+        ];
+        
+        const bootEl = document.getElementById('boot');
+        const screenEl = document.getElementById('screen');
+        let bootComplete = false;
+        let currentLineIndex = 0;
+        
+        function typeLine(text, callback) {
+            const line = document.createElement('div');
+            line.className = 'boot-line glow';
+            bootEl.appendChild(line);
+            
+            let charIndex = 0;
+            const typeInterval = setInterval(() => {
+                if (charIndex < text.length) {
+                    line.textContent = text.substring(0, charIndex + 1);
+                    charIndex++;
+                } else {
+                    clearInterval(typeInterval);
+                    if (callback) callback();
+                }
+            }, 15);
+        }
+        
+        function runBootSequence() {
+            if (currentLineIndex >= bootLines.length) {
+                // Wait for keypress to continue
+                document.addEventListener('keydown', finishBoot, { once: true });
+                return;
+            }
+            
+            const line = bootLines[currentLineIndex];
+            currentLineIndex++;
+            
+            setTimeout(() => {
+                if (line.text === '') {
+                    const empty = document.createElement('div');
+                    empty.innerHTML = '&nbsp;';
+                    bootEl.appendChild(empty);
+                    runBootSequence();
+                } else {
+                    typeLine(line.text, runBootSequence);
+                }
+            }, line.delay);
+        }
+        
+        function finishBoot() {
+            bootComplete = true;
+            screenEl.classList.add('boot-complete');
+            updateClock();
+            playBeep();
+        }
+        
+        // ============================================
+        // CLOCK
+        // ============================================
+        function updateClock() {
+            const now = new Date();
+            const time = now.toTimeString().split(' ')[0];
+            const year = 2122; // Alien timeline
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            
+            document.getElementById('time').textContent = time;
+            document.getElementById('date').textContent = `${year}.${month}.${day}`;
+            
+            if (bootComplete) {
+                setTimeout(updateClock, 1000);
+            }
+        }
+        
+        // ============================================
+        // NAVIGATION
+        // ============================================
+        const menuItems = document.querySelectorAll('.menu-item');
+        const sections = document.querySelectorAll('.section');
+        const mainMenu = document.getElementById('main-menu');
+        let selectedIndex = 0;
+        let currentSection = null;
+        
+        function updateSelection() {
+            menuItems.forEach((item, index) => {
+                item.classList.toggle('selected', index === selectedIndex);
+            });
+        }
+        
+        function showSection(sectionId) {
+            mainMenu.classList.remove('active');
+            sections.forEach(s => s.classList.remove('active'));
+            
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.classList.add('active');
+                currentSection = sectionId;
+                playBeep();
+            }
+        }
+        
+        function showMenu() {
+            sections.forEach(s => s.classList.remove('active'));
+            mainMenu.classList.add('active');
+            currentSection = null;
+            playBeep();
+        }
+        
+        document.addEventListener('keydown', (e) => {
+            if (!bootComplete) return;
+            
+            // Number keys 1-5
+            if (e.key >= '1' && e.key <= '5') {
+                const index = parseInt(e.key) - 1;
+                if (index < menuItems.length) {
+                    selectedIndex = index;
+                    updateSelection();
+                    const section = menuItems[index].dataset.section;
+                    showSection(section);
+                }
+                return;
+            }
+            
+            // Arrow navigation
+            if (e.key === 'ArrowUp') {
+                selectedIndex = Math.max(0, selectedIndex - 1);
+                updateSelection();
+                playBeep();
+            } else if (e.key === 'ArrowDown') {
+                selectedIndex = Math.min(menuItems.length - 1, selectedIndex + 1);
+                updateSelection();
+                playBeep();
+            } else if (e.key === 'Enter') {
+                if (!currentSection) {
+                    const section = menuItems[selectedIndex].dataset.section;
+                    showSection(section);
+                }
+            } else if (e.key === 'Escape') {
+                if (currentSection) {
+                    showMenu();
+                }
+            }
+        });
+        
+        // ============================================
+        // AUDIO (subtle beeps)
+        // ============================================
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playBeep() {
+            const oscillator = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            oscillator.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            oscillator.frequency.value = 800;
+            oscillator.type = 'square';
+            
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + 0.1);
+        }
+        
+        // ============================================
+        // START
+        // ============================================
+        runBootSequence();
+    </script>
+</body>
+</html>

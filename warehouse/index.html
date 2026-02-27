@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NinjaFredde's Warehouse</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            overflow: hidden; 
+            background: #1a1a1a;
+            font-family: 'Courier New', monospace;
+        }
+        #game-container { 
+            width: 100vw; 
+            height: 100vh; 
+            position: relative;
+        }
+        canvas { display: block; }
+        
+        /* Loading screen */
+        #loading {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+        }
+        #loading h2 {
+            color: #666;
+            font-weight: normal;
+        }
+        #loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #333;
+            border-top-color: #f80;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Menu overlay */
+        #menu {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        #menu h1 {
+            color: #f0f0f0;
+            font-size: 2.5em;
+            margin-bottom: 0.5em;
+            text-shadow: 0 0 20px rgba(255,150,50,0.5);
+        }
+        #menu p {
+            color: #888;
+            margin-bottom: 2em;
+            font-size: 0.9em;
+        }
+        #menu button {
+            background: #333;
+            border: 2px solid #666;
+            color: #f0f0f0;
+            padding: 15px 40px;
+            margin: 10px;
+            font-size: 1.1em;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #menu button:hover {
+            background: #444;
+            border-color: #f80;
+            box-shadow: 0 0 20px rgba(255,136,0,0.3);
+        }
+        
+        /* Narrator box */
+        #narrator {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.85);
+            border: 1px solid #555;
+            padding: 20px 40px;
+            max-width: 600px;
+            color: #f0f0f0;
+            font-size: 1.1em;
+            line-height: 1.5;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 50;
+        }
+        #narrator.visible { 
+            opacity: 1; 
+            pointer-events: auto;
+        }
+        #narrator .speaker {
+            color: #f80;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        /* Crosshair */
+        #crosshair {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px; height: 20px;
+            border: 2px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10;
+            transition: all 0.15s;
+        }
+        #crosshair.holding {
+            border-color: #f80;
+            box-shadow: 0 0 10px rgba(255,136,0,0.5);
+        }
+        #crosshair.can-grab {
+            border-color: #4f8;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255,255,255,0.5);
+        }
+        #crosshair::before {
+            width: 2px; height: 6px;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        #crosshair::after {
+            width: 6px; height: 2px;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        /* Instructions */
+        #instructions {
+            position: absolute;
+            top: 20px; left: 20px;
+            color: #666;
+            font-size: 0.8em;
+            z-index: 10;
+            line-height: 1.6;
+        }
+        
+        /* Hidden when playing */
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <!-- Loading -->
+        <div id="loading">
+            <div class="spinner"></div>
+            <h2>Loading physics...</h2>
+        </div>
+        
+        <!-- Menu -->
+        <div id="menu" class="hidden">
+            <h1>📦 The Warehouse</h1>
+            <p>A collection of game development artifacts</p>
+            <button onclick="startGame('tour')">🚂 Take the Tour</button>
+            <button onclick="startGame('freeroam')">🚶 Free Roam</button>
+            <p style="margin-top: 2em; font-size: 0.8em; color: #555;">Tip: Pick things up. Throw them.</p>
+        </div>
+        
+        <!-- HUD -->
+        <div id="crosshair" class="hidden"></div>
+        <div id="instructions" class="hidden">
+            WASD - Move | SPACE - Jump | SHIFT - Run<br>
+            LMB - Pick up / Drop | RMB - Throw<br>
+            ESC - Menu
+        </div>
+        
+        <!-- Narrator -->
+        <div id="narrator">
+            <div class="speaker">CURATOR</div>
+            <div class="text"></div>
+        </div>
+    </div>
+
+    <!-- Three.js -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    
+    <script type="module">
+    // ============================================
+    // IMPORTS
+    // ============================================
+    import RAPIER from 'https://cdn.skypack.dev/@dimforge/rapier3d-compat';
+    
+    // Post-processing
+    import { EffectComposer } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/RenderPass.js';
+    import { SSAOPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/SSAOPass.js';
+    import { OutputPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/OutputPass.js';
+    import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
+    
+    // GLTF loader for model imports
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+
+    // ============================================
+    // LEVEL LOADER (Blender → Three.js + Rapier)
+    // ============================================
+    // Naming convention:
+    //   floor_*, wall_*, static_*  → trimesh collider (static)
+    //   crate_*, dynamic_*         → box collider (dynamic, physics)
+    //   trigger_*                  → no render, trigger zone
+    //   prop_*, decor_*, light_*   → no collision (visual only)
+    //
+    // Or use Blender custom properties:
+    //   collider: "trimesh" | "box" | "convex" | "none"
+    //   physics: "static" | "dynamic"
+    
+    const gltfLoader = new GLTFLoader();
+    
+    async function loadLevel(url) {
+        return new Promise((resolve, reject) => {
+            gltfLoader.load(url, (gltf) => {
+                const levelObjects = [];
+                
+                gltf.scene.traverse((child) => {
+                    if (!child.isMesh) return;
+                    
+                    const name = child.name.toLowerCase();
+                    const userData = child.userData || {};
+                    
+                    // Determine collider type from name or custom property
+                    let colliderType = userData.collider || 'none';
+                    let physicsType = userData.physics || 'static';
+                    
+                    // Parse naming convention
+                    if (name.startsWith('floor_') || name.startsWith('wall_') || name.startsWith('static_')) {
+                        colliderType = 'trimesh';
+                        physicsType = 'static';
+                    } else if (name.startsWith('crate_') || name.startsWith('dynamic_')) {
+                        colliderType = 'box';
+                        physicsType = 'dynamic';
+                    } else if (name.startsWith('trigger_')) {
+                        colliderType = 'trigger';
+                        child.visible = false;
+                    }
+                    
+                    // Enable shadows
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    
+                    levelObjects.push({
+                        mesh: child,
+                        colliderType,
+                        physicsType,
+                        name: child.name
+                    });
+                });
+                
+                // Add to scene
+                scene.add(gltf.scene);
+                
+                resolve({ scene: gltf.scene, objects: levelObjects });
+            }, undefined, reject);
+        });
+    }
+    
+    function createCollidersFromLevel(levelObjects) {
+        if (!world) return;
+        
+        for (const obj of levelObjects) {
+            if (obj.colliderType === 'none') continue;
+            
+            const mesh = obj.mesh;
+            mesh.updateMatrixWorld(true);
+            
+            // Get world position, rotation, scale
+            const position = new THREE.Vector3();
+            const quaternion = new THREE.Quaternion();
+            const scale = new THREE.Vector3();
+            mesh.matrixWorld.decompose(position, quaternion, scale);
+            
+            if (obj.colliderType === 'trimesh' && obj.physicsType === 'static') {
+                // Create trimesh collider from geometry
+                const geo = mesh.geometry;
+                const vertices = new Float32Array(geo.attributes.position.array);
+                const indices = geo.index ? new Uint32Array(geo.index.array) : null;
+                
+                // Apply scale to vertices
+                for (let i = 0; i < vertices.length; i += 3) {
+                    vertices[i] *= scale.x;
+                    vertices[i + 1] *= scale.y;
+                    vertices[i + 2] *= scale.z;
+                }
+                
+                const colliderDesc = RAPIER.ColliderDesc.trimesh(vertices, indices)
+                    .setTranslation(position.x, position.y, position.z)
+                    .setRotation({ x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w });
+                world.createCollider(colliderDesc);
+                
+            } else if (obj.colliderType === 'box') {
+                // Get bounding box
+                const box = new THREE.Box3().setFromObject(mesh);
+                const size = new THREE.Vector3();
+                box.getSize(size);
+                
+                if (obj.physicsType === 'dynamic') {
+                    // Dynamic crate
+                    const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
+                        .setTranslation(position.x, position.y, position.z)
+                        .setRotation({ x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w });
+                    const rigidBody = world.createRigidBody(rigidBodyDesc);
+                    
+                    const colliderDesc = RAPIER.ColliderDesc.cuboid(size.x/2, size.y/2, size.z/2)
+                        .setDensity(1.0)
+                        .setFriction(0.5)
+                        .setRestitution(0.2);
+                    world.createCollider(colliderDesc, rigidBody);
+                    
+                    const physObj = { mesh, rigidBody, size: Math.max(size.x, size.y, size.z), originalY: position.y, hasFallen: false };
+                    physicsObjects.push(physObj);
+                    mesh.userData.physicsObject = physObj;
+                } else {
+                    // Static box
+                    const colliderDesc = RAPIER.ColliderDesc.cuboid(size.x/2, size.y/2, size.z/2)
+                        .setTranslation(position.x, position.y, position.z)
+                        .setRotation({ x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w });
+                    world.createCollider(colliderDesc);
+                }
+            }
+        }
+    }
+
+    // ============================================
+    // GAME STATE
+    // ============================================
+    const state = {
+        mode: null,
+        playing: false,
+        physicsReady: false,
+        cratesBumped: 0,
+        narrator: {
+            queue: [],
+            current: null,
+            timeout: null
+        }
+    };
+
+    // Physics
+    let world;
+    let physicsObjects = [];
+    let playerBody;
+    
+    // Player state
+    const player = {
+        velocity: new THREE.Vector3(),
+        onGround: true,
+        holding: null,  // { mesh, rigidBody, size }
+        actionCooldown: 0  // Prevents pickup -> immediate throw
+    };
+
+    // ============================================
+    // THREE.JS SETUP
+    // ============================================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a1a);
+    scene.fog = new THREE.Fog(0x1a1a1a, 10, 50);
+    
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 1.7, 8);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.getElementById('game-container').appendChild(renderer.domElement);
+
+    // Raycaster for picking objects
+    const raycaster = new THREE.Raycaster();
+    const screenCenter = new THREE.Vector2(0, 0);
+
+    // ============================================
+    // LIGHTING
+    // ============================================
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    scene.add(ambientLight);
+
+    for (let x = -8; x <= 8; x += 8) {
+        const light = new THREE.SpotLight(0xffeedd, 50);
+        light.position.set(x, 8, 0);
+        light.angle = 0.6;
+        light.penumbra = 0.5;
+        light.castShadow = true;
+        light.shadow.mapSize.width = 512;
+        light.shadow.mapSize.height = 512;
+        scene.add(light);
+    }
+
+    // ============================================
+    // POST-PROCESSING
+    // ============================================
+    const composer = new EffectComposer(renderer);
+    
+    // Base render pass
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    
+    // SSAO - Ambient Occlusion
+    const ssaoPass = new SSAOPass(scene, camera, window.innerWidth, window.innerHeight);
+    ssaoPass.kernelRadius = 0.5;      // How far AO reaches
+    ssaoPass.minDistance = 0.001;     // Near clip for AO
+    ssaoPass.maxDistance = 0.1;       // Far clip for AO
+    ssaoPass.output = SSAOPass.OUTPUT.Default;
+    composer.addPass(ssaoPass);
+    
+    // Bloom - subtle glow on bright areas
+    const bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        0.3,    // strength
+        0.4,    // radius
+        0.85    // threshold
+    );
+    composer.addPass(bloomPass);
+    
+    // Output pass (gamma correction)
+    const outputPass = new OutputPass();
+    composer.addPass(outputPass);
+
+    // ============================================
+    // WAREHOUSE GEOMETRY
+    // ============================================
+    const floorGeom = new THREE.PlaneGeometry(30, 30);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9 });
+    const floor = new THREE.Mesh(floorGeom, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.8 });
+    const wallHeight = 10;
+    const wallGeom = new THREE.PlaneGeometry(30, wallHeight);
+    
+    const backWall = new THREE.Mesh(wallGeom, wallMat);
+    backWall.position.set(0, wallHeight/2, -15);
+    scene.add(backWall);
+    
+    const leftWall = new THREE.Mesh(wallGeom, wallMat);
+    leftWall.position.set(-15, wallHeight/2, 0);
+    leftWall.rotation.y = Math.PI / 2;
+    scene.add(leftWall);
+    
+    const rightWall = new THREE.Mesh(wallGeom, wallMat);
+    rightWall.position.set(15, wallHeight/2, 0);
+    rightWall.rotation.y = -Math.PI / 2;
+    scene.add(rightWall);
+
+    // ============================================
+    // INIT PHYSICS
+    // ============================================
+    async function initPhysics() {
+        await RAPIER.init();
+        
+        const gravity = { x: 0.0, y: -20, z: 0.0 }; // Slightly stronger gravity
+        world = new RAPIER.World(gravity);
+        
+        // Floor collider
+        const floorColliderDesc = RAPIER.ColliderDesc.cuboid(15, 0.1, 15);
+        world.createCollider(floorColliderDesc);
+        
+        // Walls
+        const wallThickness = 0.5;
+        const backWallDesc = RAPIER.ColliderDesc.cuboid(15, wallHeight/2, wallThickness)
+            .setTranslation(0, wallHeight/2, -15);
+        world.createCollider(backWallDesc);
+        const leftWallDesc = RAPIER.ColliderDesc.cuboid(wallThickness, wallHeight/2, 15)
+            .setTranslation(-15, wallHeight/2, 0);
+        world.createCollider(leftWallDesc);
+        const rightWallDesc = RAPIER.ColliderDesc.cuboid(wallThickness, wallHeight/2, 15)
+            .setTranslation(15, wallHeight/2, 0);
+        world.createCollider(rightWallDesc);
+        const frontWallDesc = RAPIER.ColliderDesc.cuboid(15, wallHeight/2, wallThickness)
+            .setTranslation(0, wallHeight/2, 15);
+        world.createCollider(frontWallDesc);
+        
+        // Player body (dynamic for jumping!)
+        const playerBodyDesc = RAPIER.RigidBodyDesc.dynamic()
+            .setTranslation(0, 2, 8)
+            .lockRotations(); // Don't let player topple over
+        playerBody = world.createRigidBody(playerBodyDesc);
+        const playerColliderDesc = RAPIER.ColliderDesc.capsule(0.4, 0.3)
+            .setFriction(0)
+            .setRestitution(0);
+        world.createCollider(playerColliderDesc, playerBody);
+        
+        // Create crates with physics
+        createPhysicsCrate(-10, 0.5, 5, 1);
+        createPhysicsCrate(-10, 1.6, 5, 0.8);
+        createPhysicsCrate(-10, 2.5, 5, 0.6);
+        createPhysicsCrate(-9, 0.5, 6, 1);
+        createPhysicsCrate(-11, 0.5, 4, 1.2);
+        
+        createPhysicsCrate(10, 0.5, -5, 1);
+        createPhysicsCrate(11, 0.5, -4, 0.8);
+        createPhysicsCrate(9, 0.5, -6, 1.1);
+        
+        // Tall stack
+        createPhysicsCrate(8, 0.5, 8, 1);
+        createPhysicsCrate(8, 1.5, 8, 1);
+        createPhysicsCrate(8, 2.5, 8, 1);
+        createPhysicsCrate(8, 3.5, 8, 0.8);
+        
+        createPhysicsCrate(-8, 0.4, -8, 0.8);
+        createPhysicsCrate(-8, 1.2, -8, 0.8);
+        createPhysicsCrate(-7.2, 0.4, -8, 0.8);
+        
+        // Some lighter throwable crates near spawn
+        createPhysicsCrate(2, 0.4, 6, 0.6, 0xaa6633);
+        createPhysicsCrate(-2, 0.4, 7, 0.5, 0xaa6633);
+        createPhysicsCrate(0, 0.35, 9, 0.5, 0xaa6633);
+        
+        state.physicsReady = true;
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('menu').classList.remove('hidden');
+    }
+
+    function createPhysicsCrate(x, y, z, size, color = 0x8B4513) {
+        const geom = new THREE.BoxGeometry(size, size, size);
+        const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+        
+        const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
+            .setTranslation(x, y, z);
+        const rigidBody = world.createRigidBody(rigidBodyDesc);
+        
+        const colliderDesc = RAPIER.ColliderDesc.cuboid(size/2, size/2, size/2)
+            .setDensity(size < 0.7 ? 0.5 : 1.0) // Smaller crates are lighter
+            .setFriction(0.5)
+            .setRestitution(0.2);
+        world.createCollider(colliderDesc, rigidBody);
+        
+        const obj = { mesh, rigidBody, size, originalY: y, hasFallen: false };
+        physicsObjects.push(obj);
+        mesh.userData.physicsObject = obj;
+        return obj;
+    }
+
+    // ============================================
+    // ARTIFACTS (static)
+    // ============================================
+    const artifacts = [];
+
+    function createArtifact(x, y, z, name, description, color = 0xff6600) {
+        const pedestalGeom = new THREE.CylinderGeometry(0.5, 0.6, 0.3, 16);
+        const pedestalMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        const pedestal = new THREE.Mesh(pedestalGeom, pedestalMat);
+        pedestal.position.set(x, 0.15, z);
+        pedestal.castShadow = true;
+        scene.add(pedestal);
+        
+        if (world) {
+            const pedestalColliderDesc = RAPIER.ColliderDesc.cylinder(0.15, 0.5)
+                .setTranslation(x, 0.15, z);
+            world.createCollider(pedestalColliderDesc);
+        }
+        
+        const artifactGeom = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+        const artifactMat = new THREE.MeshStandardMaterial({ 
+            color, 
+            metalness: 0.3,
+            roughness: 0.4,
+            emissive: color,
+            emissiveIntensity: 0.1
+        });
+        const artifact = new THREE.Mesh(artifactGeom, artifactMat);
+        artifact.position.set(x, y, z);
+        artifact.castShadow = true;
+        artifact.userData = { name, description, isArtifact: true };
+        scene.add(artifact);
+        
+        artifacts.push(artifact);
+        return artifact;
+    }
+
+    function createShelf(x, z) {
+        const shelfMat = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
+        
+        for (let px of [-1, 1]) {
+            const post = new THREE.Mesh(
+                new THREE.BoxGeometry(0.1, 3, 0.1),
+                shelfMat
+            );
+            post.position.set(x + px, 1.5, z);
+            post.castShadow = true;
+            scene.add(post);
+        }
+        
+        for (let sy of [0.5, 1.5, 2.5]) {
+            const shelf = new THREE.Mesh(
+                new THREE.BoxGeometry(2.2, 0.05, 0.8),
+                shelfMat
+            );
+            shelf.position.set(x, sy, z);
+            shelf.castShadow = true;
+            shelf.receiveShadow = true;
+            scene.add(shelf);
+        }
+        
+        if (world) {
+            const shelfColliderDesc = RAPIER.ColliderDesc.cuboid(1.1, 1.5, 0.4)
+                .setTranslation(x, 1.5, z);
+            world.createCollider(shelfColliderDesc);
+        }
+    }
+
+    function createStaticObjects() {
+        createShelf(-8, -10);
+        createShelf(-4, -10);
+        createShelf(4, -10);
+        createShelf(8, -10);
+        
+        createArtifact(0, 1, -5, "C64 Palette Shader", 
+            "A popular Godot shader.", 0x4488ff);
+        createArtifact(-5, 1, 0, "Muscle Car Model", 
+            "A 1969 Mustang from an unreleased prototype.", 0xff4444);
+        createArtifact(5, 1, 0, "Pixel Knight", 
+            "Main character from a platformer that never shipped.", 0x44ff44);
+        createArtifact(0, 1, 5, "Mystery Box", 
+            "Some prototypes are best left forgotten...", 0x888888);
+    }
+
+    // ============================================
+    // PICK UP / DROP / THROW
+    // ============================================
+    function getTargetCrate() {
+        raycaster.setFromCamera(screenCenter, camera);
+        const hits = raycaster.intersectObjects(physicsObjects.map(o => o.mesh));
+        if (hits.length > 0 && hits[0].distance < 4) {
+            return hits[0].object.userData.physicsObject;
+        }
+        return null;
+    }
+    
+    function pickUp(obj) {
+        if (player.holding || player.actionCooldown > 0) return;
+        
+        player.holding = obj;
+        player.actionCooldown = 0.25;
+        
+        // Remove from physics simulation entirely while held
+        obj.rigidBody.setEnabled(false);
+        
+        document.getElementById('crosshair').classList.add('holding');
+        narrate('pickup');
+    }
+    
+    function dropObject() {
+        // Just drop - no force
+        if (!player.holding || player.actionCooldown > 0) return;
+        releaseObject(0, 0);
+    }
+    
+    function throwObject() {
+        // Throw with force
+        if (!player.holding || player.actionCooldown > 0) return;
+        releaseObject(18, 4);
+        narrate('throw');
+    }
+    
+    function releaseObject(force, upward) {
+        const obj = player.holding;
+        player.holding = null;
+        player.actionCooldown = 0.2;
+        
+        // Get position in front of camera
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        const releasePos = camera.position.clone().add(dir.clone().multiplyScalar(1.5));
+        releasePos.y -= 0.2;
+        
+        // Re-enable physics and set position
+        obj.rigidBody.setEnabled(true);
+        obj.rigidBody.setTranslation({ x: releasePos.x, y: releasePos.y, z: releasePos.z }, true);
+        obj.rigidBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        obj.rigidBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        
+        // Apply throw force if any
+        if (force > 0) {
+            obj.rigidBody.applyImpulse(
+                { x: dir.x * force, y: dir.y * force + upward, z: dir.z * force },
+                true
+            );
+            obj.rigidBody.applyTorqueImpulse(
+                { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2, z: (Math.random() - 0.5) * 2 },
+                true
+            );
+        }
+        
+        document.getElementById('crosshair').classList.remove('holding');
+    }
+    
+    function updateHeldObject() {
+        if (!player.holding) return;
+        
+        // Move the mesh directly (physics is disabled)
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        
+        const holdDistance = 1.8;
+        const holdPos = camera.position.clone().add(dir.multiplyScalar(holdDistance));
+        holdPos.y -= 0.2;
+        
+        player.holding.mesh.position.copy(holdPos);
+        player.holding.mesh.quaternion.copy(camera.quaternion);
+    }
+
+    // ============================================
+    // CONTROLS
+    // ============================================
+    const movement = { forward: 0, right: 0, sprint: false, jump: false };
+    const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    let isLocked = false;
+
+    document.addEventListener('keydown', (e) => {
+        if (!state.playing) return;
+        switch(e.code) {
+            case 'KeyW': movement.forward = 1; break;
+            case 'KeyS': movement.forward = -1; break;
+            case 'KeyA': movement.right = -1; break;
+            case 'KeyD': movement.right = 1; break;
+            case 'ShiftLeft': case 'ShiftRight': movement.sprint = true; break;
+            case 'Space': movement.jump = true; break;
+            case 'Escape': exitGame(); break;
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        switch(e.code) {
+            case 'KeyW': case 'KeyS': movement.forward = 0; break;
+            case 'KeyA': case 'KeyD': movement.right = 0; break;
+            case 'ShiftLeft': case 'ShiftRight': movement.sprint = false; break;
+            case 'Space': movement.jump = false; break;
+        }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isLocked || !state.playing) return;
+        
+        euler.setFromQuaternion(camera.quaternion);
+        euler.y -= e.movementX * 0.002;
+        euler.x -= e.movementY * 0.002;
+        euler.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, euler.x));
+        camera.quaternion.setFromEuler(euler);
+    });
+
+    document.addEventListener('mousedown', (e) => {
+        if (!state.playing || !isLocked) return;
+        
+        if (e.button === 0) { // LMB - pickup or drop
+            if (player.holding) {
+                dropObject();
+            } else {
+                const target = getTargetCrate();
+                if (target) {
+                    pickUp(target);
+                }
+            }
+        } else if (e.button === 2) { // RMB - throw
+            if (player.holding) {
+                throwObject();
+            }
+        }
+    });
+    
+    // Prevent context menu on RMB
+    renderer.domElement.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+        isLocked = document.pointerLockElement === renderer.domElement;
+    });
+
+    renderer.domElement.addEventListener('click', () => {
+        if (state.playing && state.mode === 'freeroam' && !isLocked) {
+            renderer.domElement.requestPointerLock();
+        }
+    });
+
+    // ============================================
+    // NARRATOR SYSTEM
+    // ============================================
+    const narratorEl = document.getElementById('narrator');
+    const narratorText = narratorEl.querySelector('.text');
+
+    const narratorLines = {
+        welcome: "Ah, welcome! Welcome to the warehouse. Mind your step – some of these prototypes are... temperamental.",
+        tour_start: "Let me show you around. We have quite the collection here.",
+        crate_bump: [
+            "Careful there!", 
+            "Oh! Those are fragile... well, not really.", 
+            "I was going to reorganize those anyway.", 
+            "That's coming out of your deposit.",
+            "The insurance doesn't cover visitor-induced chaos.",
+            "*sigh* I just stacked those."
+        ],
+        crate_chaos: [
+            "Are you... are you doing this on purpose?",
+            "I'm starting to think you weren't actually here for the tour.",
+            "Security! ...oh wait, I am security.",
+            "This is why we can't have nice things."
+        ],
+        pickup: [
+            "Oh, you can just... take that. Sure.",
+            "That's not a gift shop item, but okay.",
+            "Please be gentle with that.",
+            "Interesting choice."
+        ],
+        throw: [
+            "And there it goes.",
+            "Physics demonstration, I see.",
+            "That's one way to handle it.",
+            "I'll add that to the damage report."
+        ],
+        artifact_c64: "Ah, the C64 Palette Shader! A labor of love for the retro enthusiast.",
+        artifact_muscle: "The Muscle Car. Beautiful, isn't she? The handling was too realistic.",
+        artifact_pixel: "Sir Pixel, the knight who never got his quest. Perhaps someday...",
+        artifact_mystery: "I wouldn't touch that one. Some code is best left uncompiled.",
+        freeroam_intro: "Feel free to explore. Touch whatever you like. ...Within reason.",
+    };
+
+    function narrate(key, immediate = false) {
+        let text = narratorLines[key];
+        if (Array.isArray(text)) {
+            text = text[Math.floor(Math.random() * text.length)];
+        }
+        if (!text) return;
+        
+        if (immediate) {
+            showNarration(text);
+        } else {
+            state.narrator.queue.push(text);
+            processNarratorQueue();
+        }
+    }
+
+    function showNarration(text) {
+        narratorText.textContent = text;
+        narratorEl.classList.add('visible');
+        
+        if (state.narrator.timeout) clearTimeout(state.narrator.timeout);
+        state.narrator.timeout = setTimeout(() => {
+            narratorEl.classList.remove('visible');
+            state.narrator.current = null;
+            setTimeout(processNarratorQueue, 500);
+        }, 3000 + text.length * 30);
+    }
+
+    function processNarratorQueue() {
+        if (state.narrator.current || state.narrator.queue.length === 0) return;
+        state.narrator.current = state.narrator.queue.shift();
+        showNarration(state.narrator.current);
+    }
+
+    // ============================================
+    // TOUR MODE
+    // ============================================
+    const tourPath = [
+        { pos: [0, 1.7, 10], look: [0, 1, -5], duration: 2, action: () => narrate('welcome') },
+        { pos: [0, 1.7, 3], look: [0, 1, -5], duration: 3, action: () => narrate('artifact_c64') },
+        { pos: [-3, 1.7, 0], look: [-5, 1, 0], duration: 3, action: () => narrate('artifact_muscle') },
+        { pos: [3, 1.7, 0], look: [5, 1, 0], duration: 3, action: () => narrate('artifact_pixel') },
+        { pos: [0, 1.7, 7], look: [0, 1, 5], duration: 3, action: () => narrate('artifact_mystery') },
+        { pos: [0, 1.7, 10], look: [0, 1, -5], duration: 2 },
+    ];
+    let tourIndex = 0;
+    let tourProgress = 0;
+
+    function updateTour(delta) {
+        if (tourIndex >= tourPath.length - 1) {
+            state.mode = 'freeroam';
+            narrate('freeroam_intro');
+            document.getElementById('instructions').classList.remove('hidden');
+            return;
+        }
+        
+        const from = tourPath[tourIndex];
+        const to = tourPath[tourIndex + 1];
+        
+        tourProgress += delta / from.duration;
+        
+        if (tourProgress >= 1) {
+            tourProgress = 0;
+            tourIndex++;
+            if (tourPath[tourIndex]?.action) {
+                tourPath[tourIndex].action();
+            }
+            return;
+        }
+        
+        const t = smoothstep(tourProgress);
+        
+        camera.position.lerpVectors(
+            new THREE.Vector3(...from.pos),
+            new THREE.Vector3(...to.pos),
+            t
+        );
+        
+        const lookFrom = new THREE.Vector3(...from.look);
+        const lookTo = new THREE.Vector3(...to.look);
+        const lookTarget = new THREE.Vector3().lerpVectors(lookFrom, lookTo, t);
+        camera.lookAt(lookTarget);
+    }
+
+    function smoothstep(t) {
+        return t * t * (3 - 2 * t);
+    }
+
+    // ============================================
+    // PHYSICS UPDATE
+    // ============================================
+    function updatePhysics(delta) {
+        if (!state.physicsReady) return;
+        
+        world.step();
+        
+        // Sync meshes
+        for (const obj of physicsObjects) {
+            if (obj === player.holding) continue;
+            
+            const pos = obj.rigidBody.translation();
+            const rot = obj.rigidBody.rotation();
+            
+            obj.mesh.position.set(pos.x, pos.y, pos.z);
+            obj.mesh.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+            
+            // Fallen crate detection
+            if (!obj.hasFallen && pos.y < obj.originalY - 0.5) {
+                obj.hasFallen = true;
+                state.cratesBumped++;
+                
+                if (state.cratesBumped <= 3) {
+                    narrate('crate_bump');
+                } else if (state.cratesBumped === 5 || state.cratesBumped === 8) {
+                    narrate('crate_chaos');
+                }
+            }
+        }
+        
+        // Update held object position
+        updateHeldObject();
+    }
+
+    // ============================================
+    // GAME LOOP
+    // ============================================
+    const clock = new THREE.Clock();
+    const crosshair = document.getElementById('crosshair');
+
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        const delta = Math.min(clock.getDelta(), 0.1);
+        
+        if (state.playing) {
+            if (state.mode === 'tour') {
+                updateTour(delta);
+            } else if (state.mode === 'freeroam') {
+                updateFreeroam(delta);
+            }
+            
+            updatePhysics(delta);
+            
+            // Rotate artifacts
+            artifacts.forEach(a => {
+                a.rotation.y += delta * 0.5;
+            });
+            
+            // Update crosshair
+            if (!player.holding && state.mode === 'freeroam') {
+                const target = getTargetCrate();
+                crosshair.classList.toggle('can-grab', !!target);
+            }
+            
+            // Throw cooldown
+            if (player.actionCooldown > 0) {
+                player.actionCooldown -= delta;
+            }
+        }
+        
+        composer.render();
+    }
+
+    function updateFreeroam(delta) {
+        if (!playerBody) return;
+        
+        const baseSpeed = 8;
+        const sprintMultiplier = movement.sprint ? 1.8 : 1;
+        const speed = baseSpeed * sprintMultiplier;
+        
+        // Get current velocity
+        const vel = playerBody.linvel();
+        
+        // Direction from camera
+        const direction = new THREE.Vector3();
+        camera.getWorldDirection(direction);
+        direction.y = 0;
+        direction.normalize();
+        
+        const right = new THREE.Vector3();
+        right.crossVectors(direction, new THREE.Vector3(0, 1, 0));
+        
+        // Calculate desired horizontal velocity
+        let desiredX = 0;
+        let desiredZ = 0;
+        
+        desiredX += direction.x * movement.forward * speed;
+        desiredZ += direction.z * movement.forward * speed;
+        desiredX += right.x * movement.right * speed;
+        desiredZ += right.z * movement.right * speed;
+        
+        // Ground check using raycast
+        const pos = playerBody.translation();
+        const rayOrigin = { x: pos.x, y: pos.y, z: pos.z };
+        const rayDir = { x: 0, y: -1, z: 0 };
+        const ray = new RAPIER.Ray(rayOrigin, rayDir);
+        const hit = world.castRay(ray, 1.2, true); // Check 1.2 units down
+        player.onGround = hit !== null && hit.toi < 1.1;
+        
+        // Jump
+        let newVelY = vel.y;
+        if (movement.jump && player.onGround) {
+            newVelY = 10; // Jump impulse
+        }
+        movement.jump = false; // Always consume to prevent holding
+        
+        // Apply velocity
+        playerBody.setLinvel({ x: desiredX, y: newVelY, z: desiredZ }, true);
+        
+        // Update camera position from physics body
+        const newPos = playerBody.translation();
+        camera.position.set(newPos.x, newPos.y + 0.7, newPos.z); // +0.7 for eye height
+        
+        checkArtifactProximity();
+    }
+
+    let lastNearArtifact = null;
+    function checkArtifactProximity() {
+        let nearest = null;
+        let nearestDist = 3;
+        
+        for (const artifact of artifacts) {
+            const dist = camera.position.distanceTo(artifact.position);
+            if (dist < nearestDist) {
+                nearest = artifact;
+                nearestDist = dist;
+            }
+        }
+        
+        if (nearest && nearest !== lastNearArtifact) {
+            const key = 'artifact_' + nearest.userData.name.toLowerCase().split(' ')[0];
+            if (narratorLines[key]) {
+                narrate(key);
+            }
+            lastNearArtifact = nearest;
+        } else if (!nearest) {
+            lastNearArtifact = null;
+        }
+    }
+
+    // ============================================
+    // GAME STATE
+    // ============================================
+    window.startGame = function(mode) {
+        state.mode = mode;
+        state.playing = true;
+        state.cratesBumped = 0;
+        
+        document.getElementById('menu').classList.add('hidden');
+        document.getElementById('crosshair').classList.remove('hidden');
+        
+        // Reset player position
+        if (playerBody) {
+            playerBody.setTranslation({ x: 0, y: 2, z: 10 }, true);
+            playerBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        }
+        
+        camera.position.set(0, 2.7, 10);
+        camera.lookAt(0, 1, -5);
+        euler.set(0, 0, 0);
+        tourIndex = 0;
+        tourProgress = 0;
+        
+        player.holding = null;
+        
+        if (mode === 'tour') {
+            if (tourPath[0]?.action) tourPath[0].action();
+        } else {
+            narrate('freeroam_intro');
+            document.getElementById('instructions').classList.remove('hidden');
+            renderer.domElement.requestPointerLock();
+        }
+    };
+
+    window.exitGame = function() {
+        state.playing = false;
+        document.exitPointerLock();
+        document.getElementById('menu').classList.remove('hidden');
+        document.getElementById('crosshair').classList.add('hidden');
+        document.getElementById('instructions').classList.add('hidden');
+        narratorEl.classList.remove('visible');
+        
+        if (player.holding) {
+            player.holding.rigidBody.setBodyType(RAPIER.RigidBodyType.Dynamic);
+            player.holding = null;
+        }
+    };
+
+    // ============================================
+    // WINDOW RESIZE
+    // ============================================
+    window.addEventListener('resize', () => {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        
+        renderer.setSize(width, height);
+        composer.setSize(width, height);
+        ssaoPass.setSize(width, height);
+    });
+
+    // ============================================
+    // INIT
+    // ============================================
+    initPhysics().then(() => {
+        createStaticObjects();
+        animate();
+    });
+    </script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NinjaFredde // Labs</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a0a;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 60px 20px;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            font-weight: 300;
+            margin-bottom: 10px;
+            letter-spacing: 0.1em;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 60px;
+            font-size: 1.1em;
+        }
+        
+        .experiments {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            max-width: 1000px;
+            width: 100%;
+        }
+        
+        .card {
+            background: #151515;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 30px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        
+        .card:hover {
+            border-color: #444;
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        
+        .card .icon {
+            font-size: 3em;
+            margin-bottom: 20px;
+        }
+        
+        .card h2 {
+            font-size: 1.4em;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
+        
+        .card p {
+            color: #888;
+            line-height: 1.6;
+            font-size: 0.95em;
+        }
+        
+        .card .tags {
+            margin-top: 20px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .card .tag {
+            background: #222;
+            color: #888;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.8em;
+        }
+        
+        .card.warehouse:hover {
+            border-color: #f80;
+        }
+        
+        .card.terminal:hover {
+            border-color: #3f3;
+        }
+        
+        footer {
+            margin-top: 80px;
+            color: #444;
+            font-size: 0.9em;
+        }
+        
+        footer a {
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>NINJAFREDDE</h1>
+    <p class="subtitle">Web Experiments & Prototypes</p>
+    
+    <div class="experiments">
+        <a href="warehouse/" class="card warehouse">
+            <div class="icon">📦</div>
+            <h2>The Warehouse</h2>
+            <p>
+                A 3D museum of game development artifacts. Walk around, 
+                pick things up, throw them. A dry-humored curator narrates your destruction.
+            </p>
+            <div class="tags">
+                <span class="tag">Three.js</span>
+                <span class="tag">Rapier Physics</span>
+                <span class="tag">WebGL</span>
+            </div>
+        </a>
+        
+        <a href="terminal/" class="card terminal">
+            <div class="icon">🖥️</div>
+            <h2>Mono Terminal</h2>
+            <p>
+                Weyland-Yutani inspired retro terminal interface. 
+                CRT effects, boot sequence, keyboard navigation. Building better worlds.
+            </p>
+            <div class="tags">
+                <span class="tag">Retro UI</span>
+                <span class="tag">CRT Effects</span>
+                <span class="tag">Keyboard Nav</span>
+            </div>
+        </a>
+        
+        <!-- Future experiments -->
+        <!--
+        <a href="experiment/" class="card">
+            <div class="icon">🔬</div>
+            <h2>Next Experiment</h2>
+            <p>Coming soon...</p>
+        </a>
+        -->
+    </div>
+    
+    <footer>
+        <a href="https://ninjafredde.com">← Back to NinjaFredde.com</a>
+    </footer>
+</body>
+</html>
