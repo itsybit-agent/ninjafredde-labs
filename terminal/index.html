@@ -334,36 +334,95 @@
         
         /* Mobile adjustments */
         @media (max-width: 600px) {
-            .screen {
-                padding: 15px;
-                top: 10px;
-                left: 10px;
-                right: 10px;
-                bottom: 10px;
+            body {
+                font-size: 14px;
             }
             
-            .menu-item {
-                padding: 12px 15px;
-                font-size: 1em;
+            .screen {
+                padding: 12px;
+                top: 5px;
+                left: 5px;
+                right: 5px;
+                bottom: 5px;
+                border-radius: 10px;
+                display: flex;
+                flex-direction: column;
             }
             
             .header {
-                flex-direction: column;
+                flex-direction: row;
                 gap: 10px;
+                padding-bottom: 10px;
+                margin-bottom: 10px;
+                flex-shrink: 0;
             }
             
-            .datetime {
-                text-align: left;
-            }
-            
-            .footer {
+            .logo {
                 font-size: 12px;
-                flex-direction: column;
-                gap: 5px;
             }
             
             .logo-icon {
-                font-size: 24px;
+                font-size: 18px;
+            }
+            
+            .datetime {
+                text-align: right;
+                font-size: 16px;
+            }
+            
+            .datetime .date {
+                font-size: 10px;
+            }
+            
+            .content {
+                flex: 1;
+                height: auto;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            .menu-item {
+                padding: 10px 12px;
+                font-size: 0.95em;
+            }
+            
+            .menu-item .key {
+                min-width: 24px;
+                padding: 2px 6px;
+                font-size: 0.9em;
+            }
+            
+            .section-title {
+                font-size: 1.1em;
+                margin-bottom: 15px;
+            }
+            
+            .data-row {
+                font-size: 0.9em;
+                padding: 4px 0;
+            }
+            
+            .footer {
+                position: relative;
+                bottom: auto;
+                left: auto;
+                right: auto;
+                font-size: 10px;
+                flex-direction: column;
+                gap: 3px;
+                padding-top: 8px;
+                margin-top: 10px;
+                flex-shrink: 0;
+            }
+            
+            .back-btn {
+                padding: 8px 15px;
+                font-size: 0.9em;
+                margin-top: 20px;
+            }
+            
+            .ascii {
+                font-size: 6px;
             }
         }
     </style>
