@@ -35,36 +35,10 @@
             image-rendering: crisp-edges;
         }
         
-        /* Touch zones */
-        .touch-zones {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            display: grid;
-            grid-template-rows: 1fr 1fr;
-            grid-template-columns: 1fr 1fr;
-            pointer-events: auto;
-            z-index: 10;
+        /* Touch feedback */
+        #game {
+            cursor: pointer;
         }
-        
-        .touch-zone {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: rgba(255,255,255,0.1);
-            font-size: 3em;
-            transition: background 0.1s;
-        }
-        
-        .touch-zone:active {
-            background: rgba(255,255,255,0.1);
-        }
-        
-        .zone-forward { grid-column: 1 / 3; }
-        .zone-left { }
-        .zone-right { }
         
         /* Minimal HUD */
         #hud {
@@ -92,14 +66,10 @@
 <body>
     <div id="game"></div>
     
-    <div class="touch-zones">
-        <div class="touch-zone zone-forward" data-action="forward">↑</div>
-        <div class="touch-zone zone-left" data-action="left">←</div>
-        <div class="touch-zone zone-right" data-action="right">→</div>
-    </div>
+    <!-- Swipe anywhere to move, tap to attack -->
     
     <div id="compass">N</div>
-    <div id="hud">TAP TO MOVE</div>
+    <div id="hud">SWIPE TO MOVE · TAP TO ATTACK</div>
     <div id="players" style="position:fixed;top:20px;left:20px;color:#666;font-size:12px;z-index:20;">👻 0</div>
     
     <!-- Firebase -->
@@ -405,31 +375,47 @@
     // ============================================
     // INPUT HANDLING
     // ============================================
-    document.querySelectorAll('.touch-zone').forEach(zone => {
-        const action = zone.dataset.action;
+    // Swipe gesture controls
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+    const SWIPE_THRESHOLD = 30;  // Min distance for swipe
+    const TAP_THRESHOLD = 10;    // Max movement for tap
+    const TAP_TIME = 200;        // Max time for tap (ms)
+    
+    document.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchStartTime = Date.now();
+    }, { passive: true });
+    
+    document.addEventListener('touchend', (e) => {
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaX = touchEndX - touchStartX;
+        const deltaY = touchEndY - touchStartY;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        const elapsed = Date.now() - touchStartTime;
         
-        // Handle both touch and click
-        const doAction = () => {
-            console.log('Action:', action);
-            if (action === 'forward') moveForward();
-            else if (action === 'back') moveBackward();
-            else if (action === 'left') turnLeft();
-            else if (action === 'right') turnRight();
-        };
+        // Tap = attack
+        if (distance < TAP_THRESHOLD && elapsed < TAP_TIME) {
+            playerAttack();
+            return;
+        }
         
-        zone.addEventListener('click', doAction);
-        
-        zone.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            zone.style.background = 'rgba(255,255,255,0.2)';
-            doAction();
-        }, { passive: false });
-        
-        zone.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            zone.style.background = '';
-        }, { passive: false });
-    });
+        // Swipe detection
+        if (distance > SWIPE_THRESHOLD) {
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                // Horizontal swipe
+                if (deltaX > 0) turnRight();
+                else turnLeft();
+            } else {
+                // Vertical swipe
+                if (deltaY < 0) moveForward();
+                else moveBackward();
+            }
+        }
+    }, { passive: true });
     
     // Keyboard support
     document.addEventListener('keydown', (e) => {
