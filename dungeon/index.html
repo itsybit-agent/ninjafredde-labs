@@ -296,7 +296,7 @@
     const ambientLight = new THREE.AmbientLight(0xbbaa99, 2.0);  // Brighter for dither shader
     scene.add(ambientLight);
     
-    const playerLight = new THREE.PointLight(0xffffee, 2, 15);
+    const playerLight = new THREE.PointLight(0xffffee, 4, 12);  // Stronger player torch
     playerLight.position.set(0, 1, 0);
     scene.add(playerLight);
     
