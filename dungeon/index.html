@@ -508,6 +508,7 @@
         requestAnimationFrame(animate);
         update();
         updateGhosts();
+        updateSkeletons();
         renderer.render(scene, camera);
     }
     
@@ -517,6 +518,7 @@
     function init() {
         generateMaze();
         buildLevel();
+        spawnInitialSkeletons();
         
         // Set initial position - start facing South (into the maze)
         player.gridX = 1;
@@ -567,6 +569,111 @@
             hash = ((hash << 5) - hash) + playerId.charCodeAt(i);
         }
         return GHOST_COLORS[Math.abs(hash) % GHOST_COLORS.length];
+    }
+    
+    // ============================================
+    // SKELETONS
+    // ============================================
+    const skeletonTextures = {
+        idle: loadPixelTexture('textures/skeleton_idle.png'),
+        attack: loadPixelTexture('textures/skeleton_attack.png'),
+        hit: loadPixelTexture('textures/skeleton_hit.png')
+    };
+    
+    const skeletons = [];
+    const SKELETON_SPEED = 0.02;
+    const SKELETON_ATTACK_RANGE = 1.5;
+    const SKELETON_ATTACK_COOLDOWN = 1500;  // ms
+    
+    function spawnSkeleton(x, z) {
+        const material = new THREE.SpriteMaterial({
+            map: skeletonTextures.idle,
+            transparent: true
+        });
+        const sprite = new THREE.Sprite(material);
+        sprite.scale.set(1.5, 1.5, 1);
+        sprite.position.set(x, 1.0, z);
+        scene.add(sprite);
+        
+        skeletons.push({
+            sprite,
+            material,
+            x, z,
+            state: 'idle',  // idle, attack, hit
+            stateTimer: 0,
+            lastAttack: 0,
+            hp: 2
+        });
+    }
+    
+    function updateSkeletons() {
+        const now = Date.now();
+        
+        for (let i = skeletons.length - 1; i >= 0; i--) {
+            const skel = skeletons[i];
+            
+            // State timer (for hit flash)
+            if (skel.state === 'hit' && now - skel.stateTimer > 200) {
+                skel.state = 'idle';
+            }
+            if (skel.state === 'attack' && now - skel.stateTimer > 400) {
+                skel.state = 'idle';
+            }
+            
+            // Move toward player
+            const dx = player.x - skel.x;
+            const dz = player.z - skel.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            
+            if (dist > SKELETON_ATTACK_RANGE && skel.state === 'idle') {
+                // Move toward player
+                skel.x += (dx / dist) * SKELETON_SPEED;
+                skel.z += (dz / dist) * SKELETON_SPEED;
+            } else if (dist <= SKELETON_ATTACK_RANGE && skel.state === 'idle') {
+                // Attack!
+                if (now - skel.lastAttack > SKELETON_ATTACK_COOLDOWN) {
+                    skel.state = 'attack';
+                    skel.stateTimer = now;
+                    skel.lastAttack = now;
+                }
+            }
+            
+            // Update sprite position
+            skel.sprite.position.x = skel.x;
+            skel.sprite.position.z = skel.z;
+            skel.sprite.position.y = 1.0 + Math.sin(now * 0.005 + i) * 0.05;
+            
+            // Update texture based on state
+            skel.material.map = skeletonTextures[skel.state];
+            skel.material.needsUpdate = true;
+        }
+    }
+    
+    function hitSkeleton(index) {
+        const skel = skeletons[index];
+        skel.hp--;
+        skel.state = 'hit';
+        skel.stateTimer = Date.now();
+        
+        if (skel.hp <= 0) {
+            // Death!
+            scene.remove(skel.sprite);
+            skeletons.splice(index, 1);
+        }
+    }
+    
+    // Spawn some skeletons in the maze
+    function spawnInitialSkeletons() {
+        // Find open cells to spawn in
+        let spawned = 0;
+        for (let z = 3; z < GRID_SIZE - 1 && spawned < 5; z++) {
+            for (let x = 3; x < GRID_SIZE - 1 && spawned < 5; x++) {
+                if (maze[z][x] === 0 && Math.random() < 0.15) {
+                    spawnSkeleton(x * CELL_SIZE, z * CELL_SIZE);
+                    spawned++;
+                }
+            }
+        }
     }
     
     // Update our position in Firebase
