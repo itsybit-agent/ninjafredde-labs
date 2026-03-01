@@ -265,14 +265,43 @@
     playerLight.position.set(0, 1, 0);
     scene.add(playerLight);
     
+    // ============================================
+    // TEXTURE LOADING
+    // ============================================
+    const textureLoader = new THREE.TextureLoader();
+    
+    function loadPixelTexture(path) {
+        const tex = textureLoader.load(path);
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        return tex;
+    }
+    
+    // Load textures (drop your pixel art PNGs in textures/ folder)
+    const wallTex = loadPixelTexture('textures/wall.png');
+    const floorTex = loadPixelTexture('textures/floor.png');
+    const ceilingTex = loadPixelTexture('textures/ceiling.png');
+    
+    // Floor/ceiling repeat across the whole grid
+    floorTex.repeat.set(GRID_SIZE, GRID_SIZE);
+    ceilingTex.repeat.set(GRID_SIZE, GRID_SIZE);
+    
     // Materials
     const wallMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xffffff,
+        map: wallTex,
         roughness: 0.9
     });
     
     const floorMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x333333,
+        map: floorTex,
+        roughness: 0.95
+    });
+    
+    const ceilingMaterial = new THREE.MeshStandardMaterial({ 
+        map: ceilingTex,
         roughness: 0.95
     });
     
@@ -293,7 +322,7 @@
         scene.add(floor);
         
         // Ceiling
-        const ceiling = new THREE.Mesh(floorGeom, floorMaterial);
+        const ceiling = new THREE.Mesh(floorGeom, ceilingMaterial);
         ceiling.rotation.x = Math.PI / 2;
         ceiling.position.set(GRID_SIZE * CELL_SIZE / 2 - CELL_SIZE / 2, CELL_SIZE, GRID_SIZE * CELL_SIZE / 2 - CELL_SIZE / 2);
         scene.add(ceiling);
