@@ -547,11 +547,27 @@
     
     // Ghost sprite setup
     const ghostTex = loadPixelTexture('textures/ghost.png');
-    const ghostMaterial = new THREE.SpriteMaterial({ 
-        map: ghostTex,
-        transparent: true,
-        color: 0xffaa66
-    });
+    
+    // Pac-Man style ghost colors!
+    const GHOST_COLORS = [
+        0xff6666,  // Red (Blinky)
+        0x66ffff,  // Cyan (Inky)
+        0xffb8ff,  // Pink (Pinky)
+        0xffb852,  // Orange (Clyde)
+        0x66ff66,  // Green
+        0xffff66,  // Yellow
+        0xb866ff,  // Purple
+        0x66b8ff,  // Blue
+    ];
+    
+    function getGhostColor(playerId) {
+        // Hash the ID to get consistent color per player
+        let hash = 0;
+        for (let i = 0; i < playerId.length; i++) {
+            hash = ((hash << 5) - hash) + playerId.charCodeAt(i);
+        }
+        return GHOST_COLORS[Math.abs(hash) % GHOST_COLORS.length];
+    }
     
     // Update our position in Firebase
     function broadcastPosition() {
@@ -599,11 +615,20 @@
                     light.position.set(p.x, 1.2, p.z);
                     scene.add(light);
                     
-                    // Billboard sprite
-                    const sprite = new THREE.Sprite(ghostMaterial.clone());
+                    // Billboard sprite with unique color
+                    const ghostColor = getGhostColor(id);
+                    const spriteMat = new THREE.SpriteMaterial({ 
+                        map: ghostTex,
+                        transparent: true,
+                        color: ghostColor
+                    });
+                    const sprite = new THREE.Sprite(spriteMat);
                     sprite.scale.set(1.2, 1.2, 1);
                     sprite.position.set(p.x, 1.0, p.z);
                     scene.add(sprite);
+                    
+                    // Match light color to sprite
+                    light.color.setHex(ghostColor);
                     
                     otherPlayers[id] = { light, sprite, x: p.x, z: p.z, lastSeen: now };
                 } else {
