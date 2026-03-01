@@ -938,17 +938,25 @@
                 }
             } else if (gridDist === 1 && skel.state === 'idle') {
                 // Adjacent to player - attack!
-                // Must be cardinal, after grace period, and settled in position
+                // Must be cardinal, after grace period, and been adjacent for a bit
                 const isCardinal = (dx === 0 || dz === 0);  // Not diagonal
                 const graceOver = now - floorStartTime > FLOOR_GRACE_PERIOD;
-                const settledIn = now - skel.lastMove > 500;  // Wait 500ms after moving
                 
-                if (isCardinal && graceOver && settledIn && now - skel.lastAttack > SKELETON_ATTACK_COOLDOWN) {
+                // Track when we became adjacent (either we moved or player moved)
+                if (!skel.adjacentSince) {
+                    skel.adjacentSince = now;
+                }
+                const adjacentLongEnough = now - skel.adjacentSince > 600;  // Wait 600ms
+                
+                if (isCardinal && graceOver && adjacentLongEnough && now - skel.lastAttack > SKELETON_ATTACK_COOLDOWN) {
                     skel.state = 'attack';
                     skel.stateTimer = now;
                     skel.lastAttack = now;
                     playerTakeDamage();  // Ouch!
                 }
+            } else {
+                // Not adjacent - reset timer
+                skel.adjacentSince = null;
             }
             
             // Lerp render position to grid position
