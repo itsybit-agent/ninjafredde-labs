@@ -533,17 +533,16 @@
         playerMaterial.map = knightTextures[playerCombat.state];
         playerMaterial.needsUpdate = true;
         
-        // Health regen
+        // Health regen - heal 1 HP every REGEN_INTERVAL after REGEN_DELAY
         if (playerCombat.hp < playerCombat.maxHp && playerCombat.hp > 0) {
             const timeSinceDamage = now - playerCombat.lastDamage;
-            if (timeSinceDamage > REGEN_DELAY) {
-                const regenTicks = Math.floor((timeSinceDamage - REGEN_DELAY) / REGEN_INTERVAL);
-                const targetHp = Math.min(playerCombat.maxHp, 1 + regenTicks);
-                if (targetHp > playerCombat.hp) {
-                    playerCombat.hp = targetHp;
-                    updateHeartsDisplay();
-                    flashScreen('#00ff00');  // Green flash for heal!
-                }
+            const timeSinceHeal = now - (playerCombat.lastHeal || 0);
+            
+            if (timeSinceDamage > REGEN_DELAY && timeSinceHeal > REGEN_INTERVAL) {
+                playerCombat.hp++;
+                playerCombat.lastHeal = now;
+                updateHeartsDisplay();
+                flashScreen('#00ff00');  // Green flash for heal!
             }
         }
     }
@@ -877,11 +876,12 @@
                 }
             } else if (gridDist === 1 && skel.state === 'idle') {
                 // Adjacent to player - attack!
-                // But only after grace period, and only from cardinal directions
+                // Must be cardinal, after grace period, and settled in position
                 const isCardinal = (dx === 0 || dz === 0);  // Not diagonal
                 const graceOver = now - floorStartTime > FLOOR_GRACE_PERIOD;
+                const settledIn = now - skel.lastMove > 500;  // Wait 500ms after moving
                 
-                if (isCardinal && graceOver && now - skel.lastAttack > SKELETON_ATTACK_COOLDOWN) {
+                if (isCardinal && graceOver && settledIn && now - skel.lastAttack > SKELETON_ATTACK_COOLDOWN) {
                     skel.state = 'attack';
                     skel.stateTimer = now;
                     skel.lastAttack = now;
