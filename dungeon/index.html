@@ -716,6 +716,8 @@
     
     let currentFloor = 1;
     let mazeSeed = Math.floor(Math.random() * 1000000);
+    let floorStartTime = Date.now();
+    const FLOOR_GRACE_PERIOD = 2000;  // 2 seconds before skeletons attack
     
     function getFloorConfig(floor) {
         const baseSize = 10;
@@ -734,9 +736,10 @@
         ambientLight.color.setHex(config.colors.ambient);
     }
     
-    function showFloorText(floor) {
+    function showFloorText(text) {
         const div = document.createElement('div');
-        div.textContent = 'FLOOR ' + floor;
+        // If it's a number, prefix with FLOOR
+        div.textContent = typeof text === 'number' ? 'FLOOR ' + text : text;
         div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:3em;color:#fff;font-family:monospace;z-index:100;text-shadow:0 0 20px #000;';
         document.body.appendChild(div);
         setTimeout(() => div.remove(), 1500);
@@ -794,6 +797,7 @@
         player.targetZ = CELL_SIZE;
         
         applyFloorColors(floor);
+        floorStartTime = Date.now();  // Reset grace period
     }
     
     const skeletons = [];
@@ -865,7 +869,11 @@
                 }
             } else if (gridDist === 1 && skel.state === 'idle') {
                 // Adjacent to player - attack!
-                if (now - skel.lastAttack > SKELETON_ATTACK_COOLDOWN) {
+                // But only after grace period, and only from cardinal directions
+                const isCardinal = (dx === 0 || dz === 0);  // Not diagonal
+                const graceOver = now - floorStartTime > FLOOR_GRACE_PERIOD;
+                
+                if (isCardinal && graceOver && now - skel.lastAttack > SKELETON_ATTACK_COOLDOWN) {
                     skel.state = 'attack';
                     skel.stateTimer = now;
                     skel.lastAttack = now;
