@@ -581,26 +581,30 @@
     };
     
     const skeletons = [];
-    const SKELETON_SPEED = 0.02;
-    const SKELETON_ATTACK_RANGE = 1.5;
+    const SKELETON_MOVE_INTERVAL = 800;  // ms between moves
     const SKELETON_ATTACK_COOLDOWN = 1500;  // ms
+    const SKELETON_LERP_SPEED = 0.1;
     
-    function spawnSkeleton(x, z) {
+    function spawnSkeleton(gridX, gridZ) {
         const material = new THREE.SpriteMaterial({
             map: skeletonTextures.idle,
             transparent: true
         });
         const sprite = new THREE.Sprite(material);
         sprite.scale.set(1.5, 1.5, 1);
-        sprite.position.set(x, 1.0, z);
+        const worldX = gridX * CELL_SIZE;
+        const worldZ = gridZ * CELL_SIZE;
+        sprite.position.set(worldX, 1.0, worldZ);
         scene.add(sprite);
         
         skeletons.push({
             sprite,
             material,
-            x, z,
-            state: 'idle',  // idle, attack, hit
+            gridX, gridZ,           // Grid position
+            x: worldX, z: worldZ,   // Render position (lerped)
+            state: 'idle',
             stateTimer: 0,
+            lastMove: Date.now() + Math.random() * SKELETON_MOVE_INTERVAL,  // Stagger
             lastAttack: 0,
             hp: 2
         });
@@ -612,7 +616,7 @@
         for (let i = skeletons.length - 1; i >= 0; i--) {
             const skel = skeletons[i];
             
-            // State timer (for hit flash)
+            // State timers
             if (skel.state === 'hit' && now - skel.stateTimer > 200) {
                 skel.state = 'idle';
             }
@@ -620,17 +624,31 @@
                 skel.state = 'idle';
             }
             
-            // Move toward player
-            const dx = player.x - skel.x;
-            const dz = player.z - skel.z;
-            const dist = Math.sqrt(dx * dx + dz * dz);
+            // Grid distance to player
+            const dx = player.gridX - skel.gridX;
+            const dz = player.gridZ - skel.gridZ;
+            const gridDist = Math.abs(dx) + Math.abs(dz);  // Manhattan distance
             
-            if (dist > SKELETON_ATTACK_RANGE && skel.state === 'idle') {
-                // Move toward player
-                skel.x += (dx / dist) * SKELETON_SPEED;
-                skel.z += (dz / dist) * SKELETON_SPEED;
-            } else if (dist <= SKELETON_ATTACK_RANGE && skel.state === 'idle') {
-                // Attack!
+            // Move on grid toward player
+            if (gridDist > 1 && skel.state === 'idle' && now - skel.lastMove > SKELETON_MOVE_INTERVAL) {
+                // Pick cardinal direction toward player
+                let moveX = 0, moveZ = 0;
+                if (Math.abs(dx) >= Math.abs(dz)) {
+                    moveX = dx > 0 ? 1 : -1;
+                } else {
+                    moveZ = dz > 0 ? 1 : -1;
+                }
+                
+                // Check if target cell is walkable
+                const newGridX = skel.gridX + moveX;
+                const newGridZ = skel.gridZ + moveZ;
+                if (!isWall(newGridX, newGridZ)) {
+                    skel.gridX = newGridX;
+                    skel.gridZ = newGridZ;
+                    skel.lastMove = now;
+                }
+            } else if (gridDist === 1 && skel.state === 'idle') {
+                // Adjacent to player - attack!
                 if (now - skel.lastAttack > SKELETON_ATTACK_COOLDOWN) {
                     skel.state = 'attack';
                     skel.stateTimer = now;
@@ -638,12 +656,17 @@
                 }
             }
             
-            // Update sprite position
+            // Lerp render position to grid position
+            const targetX = skel.gridX * CELL_SIZE;
+            const targetZ = skel.gridZ * CELL_SIZE;
+            skel.x += (targetX - skel.x) * SKELETON_LERP_SPEED;
+            skel.z += (targetZ - skel.z) * SKELETON_LERP_SPEED;
+            
+            // Update sprite
             skel.sprite.position.x = skel.x;
             skel.sprite.position.z = skel.z;
             skel.sprite.position.y = 1.0 + Math.sin(now * 0.005 + i) * 0.05;
             
-            // Update texture based on state
             skel.material.map = skeletonTextures[skel.state];
             skel.material.needsUpdate = true;
         }
@@ -669,7 +692,7 @@
         for (let z = 3; z < GRID_SIZE - 1 && spawned < 5; z++) {
             for (let x = 3; x < GRID_SIZE - 1 && spawned < 5; x++) {
                 if (maze[z][x] === 0 && Math.random() < 0.15) {
-                    spawnSkeleton(x * CELL_SIZE, z * CELL_SIZE);
+                    spawnSkeleton(x, z);  // Grid coords, not world
                     spawned++;
                 }
             }
