@@ -539,11 +539,19 @@
     // That chunky 320x240 goodness stays chunky!
     
     // ============================================
-    // MULTIPLAYER - Ghost Lights
+    // MULTIPLAYER - Ghost Sprites (Billboard)
     // ============================================
-    const otherPlayers = {};  // id -> { light, x, z, lastSeen }
+    const otherPlayers = {};  // id -> { light, sprite, x, z, lastSeen }
     const GHOST_COLOR = 0xff6600;
     const STALE_TIMEOUT = 30000;  // 30 seconds
+    
+    // Ghost sprite setup
+    const ghostTex = loadPixelTexture('textures/ghost.png');
+    const ghostMaterial = new THREE.SpriteMaterial({ 
+        map: ghostTex,
+        transparent: true,
+        color: 0xffaa66
+    });
     
     // Update our position in Firebase
     function broadcastPosition() {
@@ -586,11 +594,18 @@
                 count++;
                 
                 if (!otherPlayers[id]) {
-                    // Create new ghost light
+                    // Create new ghost light + sprite
                     const light = new THREE.PointLight(GHOST_COLOR, 1.5, 8);
                     light.position.set(p.x, 1.2, p.z);
                     scene.add(light);
-                    otherPlayers[id] = { light, x: p.x, z: p.z, lastSeen: now };
+                    
+                    // Billboard sprite
+                    const sprite = new THREE.Sprite(ghostMaterial.clone());
+                    sprite.scale.set(1.2, 1.2, 1);
+                    sprite.position.set(p.x, 1.0, p.z);
+                    scene.add(sprite);
+                    
+                    otherPlayers[id] = { light, sprite, x: p.x, z: p.z, lastSeen: now };
                 } else {
                     // Update position (lerp for smooth movement)
                     otherPlayers[id].x = p.x;
@@ -603,6 +618,7 @@
             for (const id in otherPlayers) {
                 if (!data[id] || now - data[id].timestamp > STALE_TIMEOUT) {
                     scene.remove(otherPlayers[id].light);
+                    scene.remove(otherPlayers[id].sprite);
                     delete otherPlayers[id];
                 }
             }
@@ -630,12 +646,17 @@
         console.log('Multiplayer enabled! Player ID:', window.playerId);
     }
     
-    // Lerp ghost lights in update loop
+    // Lerp ghost lights + sprites in update loop
     function updateGhosts() {
         for (const id in otherPlayers) {
             const ghost = otherPlayers[id];
+            // Smooth movement
             ghost.light.position.x += (ghost.x - ghost.light.position.x) * 0.1;
             ghost.light.position.z += (ghost.z - ghost.light.position.z) * 0.1;
+            ghost.sprite.position.x = ghost.light.position.x;
+            ghost.sprite.position.z = ghost.light.position.z;
+            // Bobbing animation
+            ghost.sprite.position.y = 1.0 + Math.sin(Date.now() * 0.003 + parseInt(id, 36)) * 0.1;
             
             // Flicker effect
             ghost.light.intensity = 1.2 + Math.sin(Date.now() * 0.01 + parseInt(id, 36)) * 0.3;
