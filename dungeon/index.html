@@ -69,6 +69,8 @@
     <!-- Swipe anywhere to move, tap to attack -->
     
     <div id="compass">N</div>
+    <div id="hearts" style="position:fixed;top:20px;left:50%;transform:translateX(-50%);font-size:24px;z-index:20;">❤️❤️❤️</div>
+    <div id="floor" style="position:fixed;top:50px;left:50%;transform:translateX(-50%);color:#666;font-size:14px;z-index:20;font-family:monospace;">FLOOR 1</div>
     <div id="hud">SWIPE TO MOVE · TAP TO ATTACK</div>
     <div id="players" style="position:fixed;top:20px;left:20px;color:#666;font-size:12px;z-index:20;">👻 0</div>
     
@@ -624,9 +626,46 @@
     const playerCombat = {
         state: 'idle',
         stateTimer: 0,
-        hp: 5,
-        maxHp: 5
+        hp: 3,
+        maxHp: 3
     };
+    
+    function updateHeartsDisplay() {
+        const hearts = document.getElementById('hearts');
+        hearts.textContent = '❤️'.repeat(playerCombat.hp) + '🖤'.repeat(playerCombat.maxHp - playerCombat.hp);
+    }
+    
+    function updateFloorDisplay() {
+        document.getElementById('floor').textContent = 'FLOOR ' + currentFloor;
+    }
+    
+    function playerTakeDamage() {
+        if (playerCombat.state === 'hit') return;  // Invincibility frames
+        
+        playerCombat.hp--;
+        playerCombat.state = 'hit';
+        playerCombat.stateTimer = Date.now();
+        updateHeartsDisplay();
+        
+        if (playerCombat.hp <= 0) {
+            // Death! 
+            gameOver();
+        }
+    }
+    
+    function gameOver() {
+        showFloorText('GAME OVER');
+        
+        setTimeout(() => {
+            // Reset
+            playerCombat.hp = playerCombat.maxHp;
+            currentFloor = 1;
+            mazeSeed = Math.floor(Math.random() * 1000000);
+            updateHeartsDisplay();
+            loadFloor(1, mazeSeed);
+            updateFloorDisplay();
+        }, 2000);
+    }
     
     // ============================================
     // FLOOR PROGRESSION
@@ -647,7 +686,7 @@
         const baseSkeletons = 3;
         return {
             gridSize: Math.min(baseSize + (floor - 1) * 2, 18),
-            skeletonCount: Math.min(baseSkeletons + (floor - 1) * 2, 12),
+            skeletonCount: baseSkeletons + (floor - 1) * 2,  // No cap - gets brutal!
             colors: FLOOR_COLORS[Math.min(floor - 1, FLOOR_COLORS.length - 1)]
         };
     }
@@ -672,6 +711,7 @@
         mazeSeed = Math.floor(Math.random() * 1000000);
         loadFloor(currentFloor, mazeSeed);
         showFloorText(currentFloor);
+        updateFloorDisplay();
         
         // Sync to Firebase
         if (window.db) {
@@ -793,6 +833,7 @@
                     skel.state = 'attack';
                     skel.stateTimer = now;
                     skel.lastAttack = now;
+                    playerTakeDamage();  // Ouch!
                 }
             }
             
