@@ -1056,12 +1056,25 @@
             const data = snapshot.val();
             if (!data) return;
             
-            // Someone advanced the floor
-            if (data.floor > currentFloor) {
+            // Sync to server floor (whether joining or advancing)
+            if (data.floor !== currentFloor || data.mazeSeed !== mazeSeed) {
                 currentFloor = data.floor;
                 mazeSeed = data.mazeSeed;
                 loadFloor(currentFloor, mazeSeed);
                 showFloorText(currentFloor);
+                updateFloorDisplay();
+            }
+        });
+        
+        // On first connect, check if world exists
+        worldRef.once('value', (snapshot) => {
+            if (!snapshot.val()) {
+                // We're first! Set initial world state
+                worldRef.set({
+                    floor: 1,
+                    mazeSeed: mazeSeed,
+                    timestamp: Date.now()
+                });
             }
         });
     }
