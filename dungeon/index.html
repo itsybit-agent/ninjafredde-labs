@@ -293,7 +293,7 @@
     composer.addPass(ditherPass);
     
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0x997766, 1.3);  // Floor 1 warm ambient
+    const ambientLight = new THREE.AmbientLight(0xbbaa99, 2.0);  // Brighter for dither shader
     scene.add(ambientLight);
     
     const playerLight = new THREE.PointLight(0xffffee, 2, 15);
@@ -775,11 +775,11 @@
     // FLOOR PROGRESSION
     // ============================================
     const FLOOR_COLORS = [
-        { fog: 0x332211, ambient: 0x997766 },  // Floor 1: warm torch
-        { fog: 0x222233, ambient: 0x778899 },  // Floor 2: cool stone
-        { fog: 0x223322, ambient: 0x779977 },  // Floor 3: mossy
-        { fog: 0x332233, ambient: 0x997799 },  // Floor 4: crypt
-        { fog: 0x331111, ambient: 0x996666 },  // Floor 5+: blood
+        { fog: 0x332211, ambient: 0xbbaa88 },  // Floor 1: warm torch
+        { fog: 0x222233, ambient: 0x99aabb },  // Floor 2: cool stone
+        { fog: 0x223322, ambient: 0x99bb99 },  // Floor 3: mossy
+        { fog: 0x332233, ambient: 0xbb99bb },  // Floor 4: crypt
+        { fog: 0x331111, ambient: 0xbb8888 },  // Floor 5+: blood
     ];
     
     let currentFloor = 1;
