@@ -454,8 +454,31 @@
             case 'D':
                 turnRight();
                 break;
+            case ' ':
+                playerAttack();
+                break;
         }
     });
+    
+    function playerAttack() {
+        if (playerCombat.state !== 'idle') return;
+        
+        playerCombat.state = 'swing';
+        playerCombat.stateTimer = Date.now();
+        
+        // Check for skeleton in front of player
+        const dir = DIRECTIONS[player.dir];
+        const targetX = player.gridX + dir.x;
+        const targetZ = player.gridZ + dir.z;
+        
+        for (let i = skeletons.length - 1; i >= 0; i--) {
+            const skel = skeletons[i];
+            if (skel.gridX === targetX && skel.gridZ === targetZ) {
+                hitSkeleton(i);
+                break;  // Only hit one
+            }
+        }
+    }
     
     // ============================================
     // GAME LOOP
@@ -502,6 +525,20 @@
         
         // Update light position
         playerLight.position.set(player.x, 1.5, player.z);
+        
+        // Update player sprite
+        playerSprite.position.set(player.x, 1.0, player.z);
+        
+        // Player state timer
+        const now = Date.now();
+        if (playerCombat.state === 'swing' && now - playerCombat.stateTimer > 300) {
+            playerCombat.state = 'idle';
+        }
+        if (playerCombat.state === 'hit' && now - playerCombat.stateTimer > 200) {
+            playerCombat.state = 'idle';
+        }
+        playerMaterial.map = knightTextures[playerCombat.state];
+        playerMaterial.needsUpdate = true;
     }
     
     function animate() {
@@ -578,6 +615,30 @@
         idle: loadPixelTexture('textures/skeleton_idle.png'),
         attack: loadPixelTexture('textures/skeleton_attack.png'),
         hit: loadPixelTexture('textures/skeleton_hit.png')
+    };
+    
+    const knightTextures = {
+        idle: loadPixelTexture('textures/knight_idle.png'),
+        swing: loadPixelTexture('textures/knight_swing.png'),
+        hit: loadPixelTexture('textures/knight_hit.png')
+    };
+    
+    // Player sprite
+    const playerMaterial = new THREE.SpriteMaterial({
+        map: knightTextures.idle,
+        transparent: true
+    });
+    const playerSprite = new THREE.Sprite(playerMaterial);
+    playerSprite.scale.set(1.4, 1.4, 1);
+    playerSprite.position.set(0, 1.0, 0);
+    scene.add(playerSprite);
+    
+    // Player combat state
+    const playerCombat = {
+        state: 'idle',
+        stateTimer: 0,
+        hp: 5,
+        maxHp: 5
     };
     
     const skeletons = [];
@@ -745,15 +806,15 @@
                     light.position.set(p.x, 1.2, p.z);
                     scene.add(light);
                     
-                    // Billboard sprite with unique color
+                    // Billboard knight sprite with unique color
                     const ghostColor = getGhostColor(id);
                     const spriteMat = new THREE.SpriteMaterial({ 
-                        map: ghostTex,
+                        map: knightTextures.idle,
                         transparent: true,
                         color: ghostColor
                     });
                     const sprite = new THREE.Sprite(spriteMat);
-                    sprite.scale.set(1.2, 1.2, 1);
+                    sprite.scale.set(1.4, 1.4, 1);
                     sprite.position.set(p.x, 1.0, p.z);
                     scene.add(sprite);
                     
