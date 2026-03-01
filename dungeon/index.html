@@ -321,6 +321,7 @@
     // PLAYER MOVEMENT
     // ============================================
     function moveForward() {
+        if (isGameOver) return;
         if (player.moving) return;
         
         const dir = DIRECTIONS[player.dir];
@@ -337,6 +338,7 @@
     }
     
     function moveBackward() {
+        if (isGameOver) return;
         if (player.moving) return;
         
         const dir = DIRECTIONS[player.dir];
@@ -353,6 +355,7 @@
     }
     
     function turnLeft() {
+        if (isGameOver) return;
         if (player.moving) return;
         
         player.dir = (player.dir + 3) % 4;
@@ -362,6 +365,7 @@
     }
     
     function turnRight() {
+        if (isGameOver) return;
         if (player.moving) return;
         
         player.dir = (player.dir + 1) % 4;
@@ -449,6 +453,7 @@
     });
     
     function playerAttack() {
+        if (isGameOver) return;
         if (playerCombat.state !== 'idle') return;
         
         playerCombat.state = 'swing';
@@ -690,6 +695,7 @@
     }
     
     function gameOver() {
+        isGameOver = true;
         showFloorText('GAME OVER');
         
         setTimeout(() => {
@@ -700,6 +706,7 @@
             updateHeartsDisplay();
             loadFloor(1, mazeSeed);
             updateFloorDisplay();
+            isGameOver = false;
         }, 2000);
     }
     
@@ -718,6 +725,7 @@
     let mazeSeed = Math.floor(Math.random() * 1000000);
     let floorStartTime = Date.now();
     const FLOOR_GRACE_PERIOD = 2000;  // 2 seconds before skeletons attack
+    let isGameOver = false;
     
     function getFloorConfig(floor) {
         const baseSize = 10;
