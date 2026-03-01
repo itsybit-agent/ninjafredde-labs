@@ -527,6 +527,20 @@
         }
         playerMaterial.map = knightTextures[playerCombat.state];
         playerMaterial.needsUpdate = true;
+        
+        // Health regen
+        if (playerCombat.hp < playerCombat.maxHp && playerCombat.hp > 0) {
+            const timeSinceDamage = now - playerCombat.lastDamage;
+            if (timeSinceDamage > REGEN_DELAY) {
+                const regenTicks = Math.floor((timeSinceDamage - REGEN_DELAY) / REGEN_INTERVAL);
+                const targetHp = Math.min(playerCombat.maxHp, 1 + regenTicks);
+                if (targetHp > playerCombat.hp) {
+                    playerCombat.hp = targetHp;
+                    updateHeartsDisplay();
+                    flashScreen('#00ff00');  // Green flash for heal!
+                }
+            }
+        }
     }
     
     function animate() {
@@ -627,8 +641,12 @@
         state: 'idle',
         stateTimer: 0,
         hp: 3,
-        maxHp: 3
+        maxHp: 3,
+        lastDamage: 0
     };
+    
+    const REGEN_DELAY = 5000;    // Wait 5s after damage before regen
+    const REGEN_INTERVAL = 8000; // Heal 1 heart every 8s
     
     function updateHeartsDisplay() {
         const hearts = document.getElementById('hearts');
@@ -645,6 +663,7 @@
         playerCombat.hp--;
         playerCombat.state = 'hit';
         playerCombat.stateTimer = Date.now();
+        playerCombat.lastDamage = Date.now();
         updateHeartsDisplay();
         
         // Red flash!
