@@ -541,7 +541,8 @@
     function init() {
         generateMaze();
         buildLevel();
-        spawnInitialSkeletons();
+        loadFloor(1, mazeSeed);
+        showFloorText(1);
         
         // Set initial position - start facing South (into the maze)
         player.gridX = 1;
@@ -626,6 +627,98 @@
         hp: 5,
         maxHp: 5
     };
+    
+    // ============================================
+    // FLOOR PROGRESSION
+    // ============================================
+    const FLOOR_COLORS = [
+        { fog: 0x221811, ambient: 0x665544 },  // Floor 1: warm torch
+        { fog: 0x181822, ambient: 0x556677 },  // Floor 2: cool stone
+        { fog: 0x182218, ambient: 0x557755 },  // Floor 3: mossy
+        { fog: 0x221822, ambient: 0x775577 },  // Floor 4: crypt
+        { fog: 0x221111, ambient: 0x774444 },  // Floor 5+: blood
+    ];
+    
+    let currentFloor = 1;
+    let mazeSeed = Math.floor(Math.random() * 1000000);
+    
+    function getFloorConfig(floor) {
+        const baseSize = 10;
+        const baseSkeletons = 3;
+        return {
+            gridSize: Math.min(baseSize + (floor - 1) * 2, 18),
+            skeletonCount: Math.min(baseSkeletons + (floor - 1) * 2, 12),
+            colors: FLOOR_COLORS[Math.min(floor - 1, FLOOR_COLORS.length - 1)]
+        };
+    }
+    
+    function applyFloorColors(floor) {
+        const config = getFloorConfig(floor);
+        scene.fog.color.setHex(config.colors.fog);
+        scene.background.setHex(config.colors.fog);
+        ambientLight.color.setHex(config.colors.ambient);
+    }
+    
+    function showFloorText(floor) {
+        const div = document.createElement('div');
+        div.textContent = 'FLOOR ' + floor;
+        div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:3em;color:#fff;font-family:monospace;z-index:100;text-shadow:0 0 20px #000;';
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 1500);
+    }
+    
+    function advanceFloor() {
+        currentFloor++;
+        mazeSeed = Math.floor(Math.random() * 1000000);
+        loadFloor(currentFloor, mazeSeed);
+        showFloorText(currentFloor);
+        
+        // Sync to Firebase
+        if (window.db) {
+            window.db.ref('world').set({
+                floor: currentFloor,
+                mazeSeed: mazeSeed,
+                timestamp: Date.now()
+            });
+        }
+    }
+    
+    function loadFloor(floor, seed) {
+        const config = getFloorConfig(floor);
+        
+        // Update grid size (recreate with new size)
+        // For simplicity, we'll keep GRID_SIZE constant but scale skeleton count
+        
+        // Clear existing skeletons
+        skeletons.forEach(s => scene.remove(s.sprite));
+        skeletons.length = 0;
+        
+        // Regenerate maze with seed
+        Math.seedrandom && Math.seedrandom(seed);
+        generateMaze();
+        buildLevel();
+        
+        // Spawn skeletons
+        let spawned = 0;
+        for (let z = 3; z < GRID_SIZE - 1 && spawned < config.skeletonCount; z++) {
+            for (let x = 3; x < GRID_SIZE - 1 && spawned < config.skeletonCount; x++) {
+                if (maze[z][x] === 0 && Math.random() < 0.2) {
+                    spawnSkeleton(x, z);
+                    spawned++;
+                }
+            }
+        }
+        
+        // Reset player position
+        player.gridX = 1;
+        player.gridZ = 1;
+        player.x = CELL_SIZE;
+        player.z = CELL_SIZE;
+        player.targetX = CELL_SIZE;
+        player.targetZ = CELL_SIZE;
+        
+        applyFloorColors(floor);
+    }
     
     const skeletons = [];
     const SKELETON_MOVE_INTERVAL = 800;  // ms between moves
@@ -729,6 +822,12 @@
             // Death!
             scene.remove(skel.sprite);
             skeletons.splice(index, 1);
+            
+            // Floor cleared?
+            if (skeletons.length === 0) {
+                showFloorText('CLEARED!');
+                setTimeout(() => advanceFloor(), 1500);
+            }
         }
     }
     
@@ -867,6 +966,28 @@
     
     init();
     setupMultiplayer();
+    setupWorldSync();
+    
+    // Sync world state (floor) across all players
+    function setupWorldSync() {
+        if (!window.db) return;
+        
+        const worldRef = window.db.ref('world');
+        
+        // Listen for floor changes
+        worldRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (!data) return;
+            
+            // Someone advanced the floor
+            if (data.floor > currentFloor) {
+                currentFloor = data.floor;
+                mazeSeed = data.mazeSeed;
+                loadFloor(currentFloor, mazeSeed);
+                showFloorText(currentFloor);
+            }
+        });
+    }
     </script>
 </body>
 </html>
