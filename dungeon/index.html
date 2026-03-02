@@ -385,6 +385,7 @@
     // ============================================
     function moveForward() {
         if (isGameOver) return;
+        if (Date.now() - floorStartTime < FLOOR_GRACE_PERIOD) return;  // Wait for level start
         if (player.moving) return;
         
         const dir = DIRECTIONS[player.dir];
@@ -402,6 +403,7 @@
     
     function moveBackward() {
         if (isGameOver) return;
+        if (Date.now() - floorStartTime < FLOOR_GRACE_PERIOD) return;
         if (player.moving) return;
         
         const dir = DIRECTIONS[player.dir];
@@ -419,6 +421,7 @@
     
     function turnLeft() {
         if (isGameOver) return;
+        if (Date.now() - floorStartTime < FLOOR_GRACE_PERIOD) return;
         if (player.moving) return;
         
         player.dir = (player.dir + 3) % 4;
@@ -429,6 +432,7 @@
     
     function turnRight() {
         if (isGameOver) return;
+        if (Date.now() - floorStartTime < FLOOR_GRACE_PERIOD) return;
         if (player.moving) return;
         
         player.dir = (player.dir + 1) % 4;
@@ -517,6 +521,7 @@
     
     function playerAttack() {
         if (isGameOver) return;
+        if (Date.now() - floorStartTime < FLOOR_GRACE_PERIOD) return;
         if (playerCombat.state !== 'idle') return;
         
         playerCombat.state = 'swing';
@@ -760,13 +765,10 @@
         showFloorText('GAME OVER');
         
         setTimeout(() => {
-            // Reset
+            // Respawn at current world floor (don't reset everyone!)
             playerCombat.hp = playerCombat.maxHp;
-            currentFloor = 1;
-            mazeSeed = Math.floor(Math.random() * 1000000);
             updateHeartsDisplay();
-            loadFloor(1, mazeSeed);
-            updateFloorDisplay();
+            loadFloor(currentFloor, mazeSeed);  // Same floor, same seed
             isGameOver = false;
         }, 2000);
     }
