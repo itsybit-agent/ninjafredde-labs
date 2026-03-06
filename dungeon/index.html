@@ -130,6 +130,7 @@
     import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
     import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
     import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+    import { VRButton } from 'three/addons/webxr/VRButton.js';
     
     // C64 Dither Shader
     const C64DitherShader = {
@@ -356,10 +357,21 @@
     
     const camera = new THREE.PerspectiveCamera(75, RENDER_WIDTH / RENDER_HEIGHT, 0.1, 100);
     
+    // Camera rig for VR (we move the rig, not the camera)
+    const cameraRig = new THREE.Group();
+    cameraRig.add(camera);
+    scene.add(cameraRig);
+    
     const renderer = new THREE.WebGLRenderer({ antialias: false });
     renderer.setSize(RENDER_WIDTH, RENDER_HEIGHT);
     renderer.setPixelRatio(1);
     document.getElementById('game').appendChild(renderer.domElement);
+    
+    // WebXR VR Support
+    renderer.xr.enabled = true;
+    const vrButton = VRButton.createButton(renderer);
+    vrButton.style.bottom = '100px';  // Above emote buttons
+    document.body.appendChild(vrButton);
     
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -509,6 +521,40 @@
         updateCompass();
     }
     
+    function strafeLeft() {
+        if (isGameOver || player.moving) return;
+        
+        // Move perpendicular to facing direction (left)
+        const leftDir = DIRECTIONS[(player.dir + 3) % 4];
+        const newX = player.gridX + leftDir.x;
+        const newZ = player.gridZ + leftDir.z;
+        
+        if (!isWall(newX, newZ)) {
+            player.gridX = newX;
+            player.gridZ = newZ;
+            player.targetX = newX * CELL_SIZE;
+            player.targetZ = newZ * CELL_SIZE;
+            player.moving = true;
+        }
+    }
+    
+    function strafeRight() {
+        if (isGameOver || player.moving) return;
+        
+        // Move perpendicular to facing direction (right)
+        const rightDir = DIRECTIONS[(player.dir + 1) % 4];
+        const newX = player.gridX + rightDir.x;
+        const newZ = player.gridZ + rightDir.z;
+        
+        if (!isWall(newX, newZ)) {
+            player.gridX = newX;
+            player.gridZ = newZ;
+            player.targetX = newX * CELL_SIZE;
+            player.targetZ = newZ * CELL_SIZE;
+            player.moving = true;
+        }
+    }
+    
     function updateCompass() {
         document.getElementById('compass').textContent = DIRECTIONS[player.dir].name;
     }
@@ -557,8 +603,10 @@
         switch (e.key) {
             case 'ArrowUp': case 'w': case 'W': moveForward(); break;
             case 'ArrowDown': case 's': case 'S': moveBackward(); break;
-            case 'ArrowLeft': case 'a': case 'A': turnLeft(); break;
-            case 'ArrowRight': case 'd': case 'D': turnRight(); break;
+            case 'a': case 'A': strafeLeft(); break;
+            case 'd': case 'D': strafeRight(); break;
+            case 'ArrowLeft': case 'q': case 'Q': turnLeft(); break;
+            case 'ArrowRight': case 'e': case 'E': turnRight(); break;
             case ' ': playerAttack(); break;
             case '1': emote('wave'); break;
             case '2': emote('laugh'); break;
@@ -1018,8 +1066,48 @@
     }
     
     let moveTimer = 0;
+    let vrInputCooldown = 0;  // Prevent rapid-fire from held stick
+    
+    function handleVRInput() {
+        const session = renderer.xr.getSession();
+        if (!session) return;
+        
+        const now = Date.now();
+        if (now - vrInputCooldown < 300) return;  // Cooldown between inputs
+        
+        for (const source of session.inputSources) {
+            if (source.gamepad) {
+                // Left stick: move forward/back
+                // Right stick: turn left/right
+                const axes = source.gamepad.axes;
+                const isLeft = source.handedness === 'left';
+                
+                if (isLeft && axes.length >= 4) {
+                    // Left thumbstick Y (forward/back)
+                    if (axes[3] < -0.5) { moveForward(); vrInputCooldown = now; }
+                    else if (axes[3] > 0.5) { moveBackward(); vrInputCooldown = now; }
+                    // Left thumbstick X (strafe)
+                    else if (axes[2] < -0.5) { strafeLeft(); vrInputCooldown = now; }
+                    else if (axes[2] > 0.5) { strafeRight(); vrInputCooldown = now; }
+                } else if (!isLeft && axes.length >= 4) {
+                    // Right thumbstick for turning
+                    if (axes[2] < -0.5) { turnLeft(); vrInputCooldown = now; }
+                    else if (axes[2] > 0.5) { turnRight(); vrInputCooldown = now; }
+                }
+                
+                // Trigger = attack
+                const buttons = source.gamepad.buttons;
+                if (buttons[0]?.pressed) { playerAttack(); vrInputCooldown = now; }
+            }
+        }
+    }
     
     function update() {
+        // Handle VR controller input
+        if (renderer.xr.isPresenting) {
+            handleVRInput();
+        }
+        
         player.x = lerp(player.x, player.targetX, MOVE_SPEED);
         player.z = lerp(player.z, player.targetZ, MOVE_SPEED);
         player.rotation = lerpAngle(player.rotation, player.targetRotation, TURN_SPEED);
@@ -1038,8 +1126,11 @@
             }
         }
         
-        camera.position.set(player.x, 1, player.z);
-        camera.rotation.y = -player.rotation;
+        // Move camera rig (works for both flat and VR)
+        // VR players are "crouched" so they can't see over walls
+        const eyeHeight = renderer.xr.isPresenting ? 0.0 : 1;
+        cameraRig.position.set(player.x, eyeHeight, player.z);
+        cameraRig.rotation.y = -player.rotation;
         playerLight.position.set(player.x, 1.5, player.z);
         playerSprite.position.set(player.x, 1.0, player.z);
         
@@ -1069,12 +1160,20 @@
     }
     
     function animate() {
-        requestAnimationFrame(animate);
         update();
         updateGhosts();
         updateSkeletons();
-        composer.render();
+        
+        // In VR, render directly (post-processing doesn't work well in XR)
+        if (renderer.xr.isPresenting) {
+            renderer.render(scene, camera);
+        } else {
+            composer.render();  // C64 dither for flat screen
+        }
     }
+    
+    // Use setAnimationLoop for XR compatibility (replaces requestAnimationFrame)
+    renderer.setAnimationLoop(animate);
     
     // ============================================
     // INIT
@@ -1100,7 +1199,6 @@
         player.targetRotation = player.rotation;
         
         updateCompass();
-        animate();
         setupMultiplayer();
         
         console.log('Blocky Dungeon - Open World Mode');
