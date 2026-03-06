@@ -36,12 +36,8 @@
             image-rendering: crisp-edges;
         }
         
-        /* Touch feedback */
-        #game {
-            cursor: pointer;
-        }
+        #game { cursor: pointer; }
         
-        /* Minimal HUD */
         #hud {
             position: fixed;
             bottom: 20px;
@@ -54,27 +50,53 @@
             text-align: center;
         }
         
-        /* Direction indicator */
-        #compass {
+        /* Expression buttons */
+        #expressions {
             position: fixed;
-            top: 20px;
-            right: 20px;
-            color: #fff;
-            font-size: 24px;
-            z-index: 20;
+            bottom: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            z-index: 30;
+        }
+        
+        .expr-btn {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #444;
+            border-radius: 8px;
+            background: rgba(0,0,0,0.7);
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .expr-btn:active {
+            background: rgba(255,255,255,0.2);
+            transform: scale(0.95);
         }
     </style>
 </head>
 <body>
     <div id="game"></div>
     
-    <!-- Swipe anywhere to move, tap to attack -->
-    
-    <div id="compass" style="font-family:'Press Start 2P',monospace;">N</div>
+    <div id="compass" style="position:fixed;top:20px;right:20px;color:#fff;font-size:24px;z-index:20;font-family:'Press Start 2P',monospace;">N</div>
     <div id="hearts" style="position:fixed;top:20px;left:50%;transform:translateX(-50%);font-size:16px;z-index:20;">❤️❤️❤️</div>
-    <div id="floor" style="position:fixed;top:50px;left:50%;transform:translateX(-50%);color:#888;font-size:10px;z-index:20;font-family:'Press Start 2P',monospace;">FLOOR 1</div>
-    <div id="hud">SWIPE TO MOVE · TAP TO ATTACK</div>
     <div id="players" style="position:fixed;top:20px;left:20px;color:#666;font-size:12px;z-index:20;">👻 0</div>
+    
+    <!-- Expression buttons -->
+    <div id="expressions">
+        <button class="expr-btn" data-expr="wave">👋</button>
+        <button class="expr-btn" data-expr="laugh">😂</button>
+        <button class="expr-btn" data-expr="alert">❗</button>
+        <button class="expr-btn" data-expr="yes">👍</button>
+        <button class="expr-btn" data-expr="no">❌</button>
+    </div>
+    
+    <div id="hud">SWIPE TO MOVE · TAP TO ATTACK · 1-5 EMOTES</div>
     
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -109,7 +131,7 @@
     import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
     import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
     
-    // C64 Dither Shader - renders at 320x200, Bayer dithering
+    // C64 Dither Shader
     const C64DitherShader = {
         uniforms: {
             'tDiffuse': { value: null },
@@ -127,7 +149,6 @@
             uniform vec2 resolution;
             varying vec2 vUv;
             
-            // 4x4 Bayer matrix
             float bayer4(vec2 pos) {
                 int x = int(mod(pos.x, 4.0));
                 int y = int(mod(pos.y, 4.0));
@@ -141,20 +162,12 @@
             }
             
             void main() {
-                // Sample at low res
                 vec2 pixel = floor(vUv * resolution) / resolution;
                 vec4 color = texture2D(tDiffuse, pixel);
-                
-                // Get dither threshold
                 vec2 pixelPos = vUv * resolution;
                 float threshold = bayer4(pixelPos);
-                
-                // Quantize with dither
-                // TWEAK HERE: higher = more colors = less dithering
-                // 4.0 = C64 chunky, 8.0 = subtle, 16.0 = barely visible
                 float levels = 8.0;
                 vec3 dithered = floor(color.rgb * levels + threshold) / levels;
-                
                 gl_FragColor = vec4(dithered, 1.0);
             }
         `
@@ -163,104 +176,167 @@
     // ============================================
     // GAME CONFIG
     // ============================================
-    const GRID_SIZE = 10;
+    let GRID_SIZE = 24;  // Will be set by bitmap
     const CELL_SIZE = 2;
     const MOVE_SPEED = 0.2;
     const TURN_SPEED = 0.18;
     
-    // Direction vectors (N, E, S, W)
+    // ============================================
+    // TILE TYPES - Simple color mapping
+    // ============================================
+    // Paint these exact colors in your worldmap.png
+    const TILES = {
+        // RGBA hex → { blocked, name, optional spawn }
+        0x000000FF: { blocked: true,  name: 'wall' },
+        0x00FF00FF: { blocked: false, name: 'grass' },
+        0x888888FF: { blocked: false, name: 'road' },
+        0x0000FFFF: { blocked: true,  name: 'water' },
+        0x8B4513FF: { blocked: true,  name: 'tree' },      // Spawn tree later
+        0xFFFF00FF: { blocked: false, name: 'spawn' },     // Player spawn
+        0xFF0000FF: { blocked: false, name: 'enemy' },     // Enemy spawn point
+        0xFFFFFFFF: { blocked: false, name: 'floor' },     // Indoor floor
+    };
+    
+    // Fallback for unknown colors
+    const DEFAULT_TILE = { blocked: false, name: 'grass' };
+    
     const DIRECTIONS = [
-        { x: 0, z: -1, name: 'N' },  // North
-        { x: 1, z: 0, name: 'E' },   // East
-        { x: 0, z: 1, name: 'S' },   // South
-        { x: -1, z: 0, name: 'W' }   // West
+        { x: 0, z: -1, name: 'N' },
+        { x: 1, z: 0, name: 'E' },
+        { x: 0, z: 1, name: 'S' },
+        { x: -1, z: 0, name: 'W' }
     ];
+    
+    // ============================================
+    // EXPRESSIONS
+    // ============================================
+    const EXPRESSIONS = {
+        wave: { emoji: '👋', duration: 2000 },
+        laugh: { emoji: '😂', duration: 2000 },
+        alert: { emoji: '❗', duration: 2500 },
+        yes: { emoji: '👍', duration: 1500 },
+        no: { emoji: '❌', duration: 1500 }
+    };
+    
+    let currentExpression = null;
+    let expressionTimer = 0;
+    
+    function emote(type) {
+        if (!EXPRESSIONS[type]) return;
+        currentExpression = type;
+        expressionTimer = Date.now();
+        broadcastPosition();  // Immediately sync
+    }
+    
+    // Expression button handlers
+    document.querySelectorAll('.expr-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            emote(btn.dataset.expr);
+        });
+    });
     
     // ============================================
     // PLAYER STATE
     // ============================================
     const player = {
-        gridX: 1,
-        gridZ: 1,
-        dir: 0,  // 0=N, 1=E, 2=S, 3=W
-        // Rendering position (lerped)
-        x: 0,
-        z: 0,
+        gridX: 2,
+        gridZ: 2,
+        dir: 0,
+        x: 0, z: 0,
         rotation: 0,
-        // Target position
-        targetX: 0,
-        targetZ: 0,
+        targetX: 0, targetZ: 0,
         targetRotation: 0,
-        // State
         moving: false
     };
     
     // ============================================
-    // MAZE GENERATION
+    // WORLD DATA
     // ============================================
-    let maze = [];
+    let maze = [];          // 0 = walkable, 1 = blocked
+    let tileData = [];      // Full tile info per cell
+    let spawnPoint = { x: 2, z: 2 };
+    let enemySpawns = [];
     
-    function generateMaze() {
-        // Initialize with walls
-        maze = Array(GRID_SIZE).fill(null).map(() => 
-            Array(GRID_SIZE).fill(1)
-        );
-        
-        // Simple recursive backtracking maze
-        const stack = [];
-        const startX = 1;
-        const startZ = 1;
-        
-        maze[startZ][startX] = 0;
-        stack.push({ x: startX, z: startZ });
-        
-        while (stack.length > 0) {
-            const current = stack[stack.length - 1];
-            const neighbors = getUnvisitedNeighbors(current.x, current.z);
+    // ============================================
+    // BITMAP WORLD LOADER
+    // ============================================
+    function loadWorldFromBitmap(url) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
             
-            if (neighbors.length === 0) {
-                stack.pop();
-            } else {
-                const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+            img.onload = () => {
+                GRID_SIZE = Math.max(img.width, img.height);
                 
-                // Remove wall between current and next
-                const wallX = current.x + (next.x - current.x) / 2;
-                const wallZ = current.z + (next.z - current.z) / 2;
-                maze[wallZ][wallX] = 0;
-                maze[next.z][next.x] = 0;
+                // Init arrays
+                maze = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(0));
+                tileData = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));
+                enemySpawns = [];
                 
-                stack.push(next);
-            }
-        }
-        
-        // Ensure spawn area is clear (2x2 around start)
-        maze[1][1] = 0;
-        maze[1][2] = 0;
-        maze[2][1] = 0;
-        maze[2][2] = 0;
+                // Read pixels
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                
+                for (let z = 0; z < img.height; z++) {
+                    for (let x = 0; x < img.width; x++) {
+                        const pixel = ctx.getImageData(x, z, 1, 1).data;
+                        const rgba = (pixel[0] << 24) | (pixel[1] << 16) | (pixel[2] << 8) | pixel[3];
+                        
+                        // Find matching tile
+                        const tile = TILES[rgba >>> 0] || DEFAULT_TILE;
+                        tileData[z][x] = tile;
+                        maze[z][x] = tile.blocked ? 1 : 0;
+                        
+                        // Track special tiles
+                        if (tile.name === 'spawn') {
+                            spawnPoint = { x, z };
+                        } else if (tile.name === 'enemy') {
+                            enemySpawns.push({ x, z });
+                        }
+                    }
+                }
+                
+                console.log(`World loaded: ${img.width}x${img.height}, spawn at ${spawnPoint.x},${spawnPoint.z}, ${enemySpawns.length} enemy spawns`);
+                resolve();
+            };
+            
+            img.onerror = () => {
+                console.warn('No worldmap.png found, generating fallback maze');
+                generateFallbackMaze();
+                resolve();
+            };
+            
+            img.src = url;
+        });
     }
     
-    function getUnvisitedNeighbors(x, z) {
-        const neighbors = [];
-        const dirs = [
-            { x: 0, z: -2 },
-            { x: 2, z: 0 },
-            { x: 0, z: 2 },
-            { x: -2, z: 0 }
-        ];
+    // Fallback if no bitmap exists yet
+    function generateFallbackMaze() {
+        GRID_SIZE = 16;
+        maze = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(1));
+        tileData = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(DEFAULT_TILE));
         
-        for (const dir of dirs) {
-            const nx = x + dir.x;
-            const nz = z + dir.z;
-            
-            if (nx > 0 && nx < GRID_SIZE - 1 && 
-                nz > 0 && nz < GRID_SIZE - 1 && 
-                maze[nz][nx] === 1) {
-                neighbors.push({ x: nx, z: nz });
+        // Simple room
+        for (let z = 1; z < GRID_SIZE - 1; z++) {
+            for (let x = 1; x < GRID_SIZE - 1; x++) {
+                if (Math.random() > 0.25) {
+                    maze[z][x] = 0;
+                }
             }
         }
         
-        return neighbors;
+        // Clear spawn area
+        for (let z = 1; z <= 4; z++) {
+            for (let x = 1; x <= 4; x++) {
+                maze[z][x] = 0;
+            }
+        }
+        
+        spawnPoint = { x: 2, z: 2 };
     }
     
     function isWall(x, z) {
@@ -272,10 +348,9 @@
     // THREE.JS SETUP
     // ============================================
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x332211);  // Floor 1 warm
-    scene.fog = new THREE.Fog(0x332211, 2, 12);  // Floor 1 warm fog
+    scene.background = new THREE.Color(0x2a2a4e);  // Lighter night sky
+    scene.fog = new THREE.Fog(0x2a2a4e, 10, 40);  // Much further fog
     
-    // Retro resolution
     const RENDER_WIDTH = 320;
     const RENDER_HEIGHT = 240;
     
@@ -286,22 +361,25 @@
     renderer.setPixelRatio(1);
     document.getElementById('game').appendChild(renderer.domElement);
     
-    // C64 post-processing
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
     const ditherPass = new ShaderPass(C64DitherShader);
     composer.addPass(ditherPass);
     
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xbbaa99, 2.0);  // Brighter for dither shader
+    const ambientLight = new THREE.AmbientLight(0xaabbcc, 3.0);  // Strong ambient
     scene.add(ambientLight);
     
-    const playerLight = new THREE.PointLight(0xffffee, 4, 12);  // Stronger player torch
+    // Directional moonlight from above
+    const moonLight = new THREE.DirectionalLight(0x8899bb, 2.0);
+    moonLight.position.set(10, 20, 10);
+    scene.add(moonLight);
+    
+    const playerLight = new THREE.PointLight(0xffffee, 4, 14);  // Torch
     playerLight.position.set(0, 1, 0);
     scene.add(playerLight);
     
     // ============================================
-    // TEXTURE LOADING
+    // TEXTURES
     // ============================================
     const textureLoader = new THREE.TextureLoader();
     
@@ -315,66 +393,64 @@
         return tex;
     }
     
-    // Load textures (drop your pixel art PNGs in textures/ folder)
     const wallTex = loadPixelTexture('textures/wall.png');
     const floorTex = loadPixelTexture('textures/floor.png');
     const ceilingTex = loadPixelTexture('textures/ceiling.png');
     
-    // Floor/ceiling repeat across the whole grid
     floorTex.repeat.set(GRID_SIZE, GRID_SIZE);
     ceilingTex.repeat.set(GRID_SIZE, GRID_SIZE);
     
-    // Materials
-    const wallMaterial = new THREE.MeshStandardMaterial({ 
-        map: wallTex,
-        roughness: 0.9
-    });
+    const wallMaterial = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9 });
+    const floorMaterial = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.95 });
     
-    const floorMaterial = new THREE.MeshStandardMaterial({ 
-        map: floorTex,
-        roughness: 0.95
-    });
-    
-    const ceilingMaterial = new THREE.MeshStandardMaterial({ 
-        map: ceilingTex,
-        roughness: 0.95
-    });
+    // Tile-specific materials (placeholder colors until you add textures)
+    const tileMaterials = {
+        grass: new THREE.MeshStandardMaterial({ color: 0x3d6b2a, roughness: 0.95 }),
+        road: new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.9 }),
+        water: new THREE.MeshStandardMaterial({ color: 0x2244aa, roughness: 0.3, metalness: 0.5 }),
+        floor: new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.95 }),
+        spawn: new THREE.MeshStandardMaterial({ color: 0x888855, roughness: 0.9 }),  // Slightly yellow
+        enemy: new THREE.MeshStandardMaterial({ color: 0x3d6b2a, roughness: 0.95 }), // Same as grass
+        wall: wallMaterial,
+        tree: new THREE.MeshStandardMaterial({ color: 0x2d4a1f, roughness: 0.95 }),  // Darker green
+    };
+    const defaultTileMaterial = tileMaterials.grass;
     
     // ============================================
     // BUILD LEVEL
     // ============================================
     function buildLevel() {
-        // Clear existing
-        while (scene.children.length > 2) {
-            scene.remove(scene.children[2]);
-        }
+        // Clear existing (keep lights)
+        const toRemove = [];
+        scene.traverse(obj => {
+            if (obj.isMesh) toRemove.push(obj);
+        });
+        toRemove.forEach(obj => scene.remove(obj));
         
-        // Floor
-        const floorGeom = new THREE.PlaneGeometry(GRID_SIZE * CELL_SIZE, GRID_SIZE * CELL_SIZE);
-        const floor = new THREE.Mesh(floorGeom, floorMaterial);
-        floor.rotation.x = -Math.PI / 2;
-        floor.position.set(GRID_SIZE * CELL_SIZE / 2 - CELL_SIZE / 2, 0, GRID_SIZE * CELL_SIZE / 2 - CELL_SIZE / 2);
-        scene.add(floor);
-        
-        // Ceiling
-        const ceiling = new THREE.Mesh(floorGeom, ceilingMaterial);
-        ceiling.rotation.x = Math.PI / 2;
-        ceiling.position.set(GRID_SIZE * CELL_SIZE / 2 - CELL_SIZE / 2, CELL_SIZE, GRID_SIZE * CELL_SIZE / 2 - CELL_SIZE / 2);
-        scene.add(ceiling);
-        
-        // Walls
+        const tileGeom = new THREE.PlaneGeometry(CELL_SIZE, CELL_SIZE);
         const wallGeom = new THREE.BoxGeometry(CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        
+        // Tiles that render as floor even when blocked
+        const flatBlockedTiles = ['water', 'tree'];
         
         for (let z = 0; z < GRID_SIZE; z++) {
             for (let x = 0; x < GRID_SIZE; x++) {
-                if (maze[z][x] === 1) {
-                    const wall = new THREE.Mesh(wallGeom, wallMaterial);
-                    wall.position.set(
-                        x * CELL_SIZE,
-                        CELL_SIZE / 2,
-                        z * CELL_SIZE
-                    );
+                const tile = tileData[z]?.[x] || DEFAULT_TILE;
+                const isFlat = flatBlockedTiles.includes(tile.name);
+                
+                if (maze[z][x] === 1 && !isFlat) {
+                    // Blocked wall: place cube
+                    const mat = tileMaterials[tile.name] || wallMaterial;
+                    const wall = new THREE.Mesh(wallGeom, mat);
+                    wall.position.set(x * CELL_SIZE, CELL_SIZE / 2, z * CELL_SIZE);
                     scene.add(wall);
+                } else {
+                    // Floor tile (walkable OR flat-blocked like water)
+                    const mat = tileMaterials[tile.name] || defaultTileMaterial;
+                    const floor = new THREE.Mesh(tileGeom, mat);
+                    floor.rotation.x = -Math.PI / 2;
+                    floor.position.set(x * CELL_SIZE, 0.01, z * CELL_SIZE);
+                    scene.add(floor);
                 }
             }
         }
@@ -383,10 +459,10 @@
     // ============================================
     // PLAYER MOVEMENT
     // ============================================
+    let isGameOver = false;
+    
     function moveForward() {
-        if (isGameOver) return;
-        if (Date.now() - floorStartTime < FLOOR_GRACE_PERIOD) return;  // Wait for level start
-        if (player.moving) return;
+        if (isGameOver || player.moving) return;
         
         const dir = DIRECTIONS[player.dir];
         const newX = player.gridX + dir.x;
@@ -402,9 +478,7 @@
     }
     
     function moveBackward() {
-        if (isGameOver) return;
-        if (Date.now() - floorStartTime < FLOOR_GRACE_PERIOD) return;
-        if (player.moving) return;
+        if (isGameOver || player.moving) return;
         
         const dir = DIRECTIONS[player.dir];
         const newX = player.gridX - dir.x;
@@ -420,10 +494,7 @@
     }
     
     function turnLeft() {
-        if (isGameOver) return;
-        if (Date.now() - floorStartTime < FLOOR_GRACE_PERIOD) return;
-        if (player.moving) return;
-        
+        if (isGameOver || player.moving) return;
         player.dir = (player.dir + 3) % 4;
         player.targetRotation = player.dir * Math.PI / 2;
         player.moving = true;
@@ -431,10 +502,7 @@
     }
     
     function turnRight() {
-        if (isGameOver) return;
-        if (Date.now() - floorStartTime < FLOOR_GRACE_PERIOD) return;
-        if (player.moving) return;
-        
+        if (isGameOver || player.moving) return;
         player.dir = (player.dir + 1) % 4;
         player.targetRotation = player.dir * Math.PI / 2;
         player.moving = true;
@@ -446,23 +514,22 @@
     }
     
     // ============================================
-    // INPUT HANDLING
+    // INPUT
     // ============================================
-    // Swipe gesture controls
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchStartTime = 0;
-    const SWIPE_THRESHOLD = 30;  // Min distance for swipe
-    const TAP_THRESHOLD = 10;    // Max movement for tap
-    const TAP_TIME = 200;        // Max time for tap (ms)
+    let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
+    const SWIPE_THRESHOLD = 30;
+    const TAP_THRESHOLD = 10;
+    const TAP_TIME = 200;
     
     document.addEventListener('touchstart', (e) => {
+        if (e.target.closest('#expressions')) return;
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
         touchStartTime = Date.now();
     }, { passive: true });
     
     document.addEventListener('touchend', (e) => {
+        if (e.target.closest('#expressions')) return;
         const touchEndX = e.changedTouches[0].clientX;
         const touchEndY = e.changedTouches[0].clientY;
         const deltaX = touchEndX - touchStartX;
@@ -470,220 +537,39 @@
         const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         const elapsed = Date.now() - touchStartTime;
         
-        // Tap = attack
         if (distance < TAP_THRESHOLD && elapsed < TAP_TIME) {
             playerAttack();
             return;
         }
         
-        // Swipe detection
         if (distance > SWIPE_THRESHOLD) {
             if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                // Horizontal swipe
                 if (deltaX > 0) turnRight();
                 else turnLeft();
             } else {
-                // Vertical swipe
                 if (deltaY < 0) moveForward();
                 else moveBackward();
             }
         }
     }, { passive: true });
     
-    // Keyboard support
     document.addEventListener('keydown', (e) => {
         switch (e.key) {
-            case 'ArrowUp':
-            case 'w':
-            case 'W':
-                moveForward();
-                break;
-            case 'ArrowDown':
-            case 's':
-            case 'S':
-                moveBackward();
-                break;
-            case 'ArrowLeft':
-            case 'a':
-            case 'A':
-                turnLeft();
-                break;
-            case 'ArrowRight':
-            case 'd':
-            case 'D':
-                turnRight();
-                break;
-            case ' ':
-                playerAttack();
-                break;
+            case 'ArrowUp': case 'w': case 'W': moveForward(); break;
+            case 'ArrowDown': case 's': case 'S': moveBackward(); break;
+            case 'ArrowLeft': case 'a': case 'A': turnLeft(); break;
+            case 'ArrowRight': case 'd': case 'D': turnRight(); break;
+            case ' ': playerAttack(); break;
+            case '1': emote('wave'); break;
+            case '2': emote('laugh'); break;
+            case '3': emote('alert'); break;
+            case '4': emote('yes'); break;
+            case '5': emote('no'); break;
         }
     });
     
-    function playerAttack() {
-        if (isGameOver) return;
-        if (Date.now() - floorStartTime < FLOOR_GRACE_PERIOD) return;
-        if (playerCombat.state !== 'idle') return;
-        
-        playerCombat.state = 'swing';
-        playerCombat.stateTimer = Date.now();
-        
-        // Check for skeleton in front of player
-        const dir = DIRECTIONS[player.dir];
-        const targetX = player.gridX + dir.x;
-        const targetZ = player.gridZ + dir.z;
-        
-        for (let i = skeletons.length - 1; i >= 0; i--) {
-            const skel = skeletons[i];
-            if (skel.gridX === targetX && skel.gridZ === targetZ) {
-                hitSkeleton(i);
-                break;  // Only hit one
-            }
-        }
-    }
-    
     // ============================================
-    // GAME LOOP
-    // ============================================
-    function lerp(a, b, t) {
-        return a + (b - a) * t;
-    }
-    
-    function lerpAngle(a, b, t) {
-        // Handle angle wrapping
-        let diff = b - a;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-        return a + diff * t;
-    }
-    
-    let moveTimer = 0;
-    
-    function update() {
-        // Lerp position
-        player.x = lerp(player.x, player.targetX, MOVE_SPEED);
-        player.z = lerp(player.z, player.targetZ, MOVE_SPEED);
-        player.rotation = lerpAngle(player.rotation, player.targetRotation, TURN_SPEED);
-        
-        // Check if movement complete
-        const posDiff = Math.abs(player.x - player.targetX) + Math.abs(player.z - player.targetZ);
-        const rotDiff = Math.abs(player.rotation - player.targetRotation);
-        
-        if (player.moving) {
-            moveTimer++;
-            // Complete if close enough OR timeout (safety)
-            if ((posDiff < 0.05 && rotDiff < 0.05) || moveTimer > 60) {
-                player.x = player.targetX;
-                player.z = player.targetZ;
-                player.rotation = player.targetRotation;
-                player.moving = false;
-                moveTimer = 0;
-            }
-        }
-        
-        // Update camera
-        camera.position.set(player.x, 1, player.z);
-        camera.rotation.y = -player.rotation;
-        
-        // Update light position
-        playerLight.position.set(player.x, 1.5, player.z);
-        
-        // Update player sprite
-        playerSprite.position.set(player.x, 1.0, player.z);
-        
-        // Player state timer
-        const now = Date.now();
-        if (playerCombat.state === 'swing' && now - playerCombat.stateTimer > 300) {
-            playerCombat.state = 'idle';
-        }
-        if (playerCombat.state === 'hit' && now - playerCombat.stateTimer > 200) {
-            playerCombat.state = 'idle';
-        }
-        playerMaterial.map = knightTextures[playerCombat.state];
-        playerMaterial.needsUpdate = true;
-        
-        // Health regen - heal 1 HP every REGEN_INTERVAL after REGEN_DELAY
-        if (playerCombat.hp < playerCombat.maxHp && playerCombat.hp > 0) {
-            const timeSinceDamage = now - playerCombat.lastDamage;
-            const timeSinceHeal = now - (playerCombat.lastHeal || 0);
-            
-            if (timeSinceDamage > REGEN_DELAY && timeSinceHeal > REGEN_INTERVAL) {
-                playerCombat.hp++;
-                playerCombat.lastHeal = now;
-                updateHeartsDisplay();
-            }
-        }
-    }
-    
-    function animate() {
-        requestAnimationFrame(animate);
-        update();
-        updateGhosts();
-        updateSkeletons();
-        composer.render();  // C64 dither!
-    }
-    
-    // ============================================
-    // INIT
-    // ============================================
-    function init() {
-        generateMaze();
-        buildLevel();
-        loadFloor(1, mazeSeed);
-        showFloorText(1);
-        
-        // Set initial position - start facing South (into the maze)
-        player.gridX = 1;
-        player.gridZ = 1;
-        player.dir = 2; // South
-        player.x = player.gridX * CELL_SIZE;
-        player.z = player.gridZ * CELL_SIZE;
-        player.targetX = player.x;
-        player.targetZ = player.z;
-        player.rotation = player.dir * Math.PI / 2;
-        player.targetRotation = player.rotation;
-        
-        updateCompass();
-        animate();
-        
-        console.log('Maze generated, player at', player.gridX, player.gridZ, 'facing', DIRECTIONS[player.dir].name);
-    }
-    
-    // Fixed resolution - no resize needed
-    // That chunky 320x240 goodness stays chunky!
-    
-    // ============================================
-    // MULTIPLAYER - Ghost Sprites (Billboard)
-    // ============================================
-    const otherPlayers = {};  // id -> { light, sprite, x, z, lastSeen }
-    const GHOST_COLOR = 0xff6600;
-    const STALE_TIMEOUT = 30000;  // 30 seconds
-    
-    // Ghost sprite setup
-    const ghostTex = loadPixelTexture('textures/ghost.png');
-    
-    // Pac-Man style ghost colors!
-    const GHOST_COLORS = [
-        0xff6666,  // Red (Blinky)
-        0x66ffff,  // Cyan (Inky)
-        0xffb8ff,  // Pink (Pinky)
-        0xffb852,  // Orange (Clyde)
-        0x66ff66,  // Green
-        0xffff66,  // Yellow
-        0xb866ff,  // Purple
-        0x66b8ff,  // Blue
-    ];
-    
-    function getGhostColor(playerId) {
-        // Hash the ID to get consistent color per player
-        let hash = 0;
-        for (let i = 0; i < playerId.length; i++) {
-            hash = ((hash << 5) - hash) + playerId.charCodeAt(i);
-        }
-        return GHOST_COLORS[Math.abs(hash) % GHOST_COLORS.length];
-    }
-    
-    // ============================================
-    // SKELETONS
+    // COMBAT
     // ============================================
     const skeletonTextures = {
         idle: loadPixelTexture('textures/skeleton_idle.png'),
@@ -697,190 +583,109 @@
         hit: loadPixelTexture('textures/knight_hit.png')
     };
     
-    // Player sprite
-    const playerMaterial = new THREE.SpriteMaterial({
-        map: knightTextures.idle,
-        transparent: true
-    });
+    const playerMaterial = new THREE.SpriteMaterial({ map: knightTextures.idle, transparent: true });
     const playerSprite = new THREE.Sprite(playerMaterial);
     playerSprite.scale.set(1.4, 1.4, 1);
-    playerSprite.position.set(0, 1.0, 0);
     scene.add(playerSprite);
     
-    // Player combat state
     const playerCombat = {
         state: 'idle',
         stateTimer: 0,
         hp: 3,
         maxHp: 3,
-        lastDamage: 0
+        lastDamage: 0,
+        lastHeal: 0
     };
     
-    const REGEN_DELAY = 5000;    // Wait 5s after damage before regen
-    const REGEN_INTERVAL = 8000; // Heal 1 heart every 8s
+    const REGEN_DELAY = 5000;
+    const REGEN_INTERVAL = 8000;
     
     function updateHeartsDisplay() {
         const hearts = document.getElementById('hearts');
         hearts.textContent = '❤️'.repeat(playerCombat.hp) + '🖤'.repeat(playerCombat.maxHp - playerCombat.hp);
     }
     
-    function updateFloorDisplay() {
-        document.getElementById('floor').textContent = 'FLOOR ' + currentFloor;
-    }
-    
     function playerTakeDamage() {
-        if (playerCombat.state === 'hit') return;  // Invincibility frames
+        if (playerCombat.state === 'hit') return;
         
         playerCombat.hp--;
         playerCombat.state = 'hit';
         playerCombat.stateTimer = Date.now();
         playerCombat.lastDamage = Date.now();
         updateHeartsDisplay();
-        
-        // Red flash!
         flashScreen('#ff0000');
         
         if (playerCombat.hp <= 0) {
-            // Death! 
             gameOver();
         }
     }
     
     function flashScreen(color) {
         const flash = document.createElement('div');
-        flash.style.cssText = `
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: ${color};
-            opacity: 0.4;
-            z-index: 50;
-            pointer-events: none;
-        `;
+        flash.style.cssText = `position:fixed;top:0;left:0;right:0;bottom:0;background:${color};opacity:0.4;z-index:50;pointer-events:none;`;
         document.body.appendChild(flash);
         setTimeout(() => flash.remove(), 150);
     }
     
     function gameOver() {
         isGameOver = true;
-        showFloorText('GAME OVER');
+        showMessage('💀 RESPAWNING...');
         
         setTimeout(() => {
-            // Respawn at current world floor (don't reset everyone!)
             playerCombat.hp = playerCombat.maxHp;
             updateHeartsDisplay();
-            loadFloor(currentFloor, mazeSeed);  // Same floor, same seed
+            // Respawn at start
+            player.gridX = 2;
+            player.gridZ = 2;
+            player.x = player.gridX * CELL_SIZE;
+            player.z = player.gridZ * CELL_SIZE;
+            player.targetX = player.x;
+            player.targetZ = player.z;
             isGameOver = false;
         }, 2000);
     }
     
-    // ============================================
-    // FLOOR PROGRESSION
-    // ============================================
-    const FLOOR_COLORS = [
-        { fog: 0x332211, ambient: 0xbbaa88 },  // Floor 1: warm torch
-        { fog: 0x222233, ambient: 0x99aabb },  // Floor 2: cool stone
-        { fog: 0x223322, ambient: 0x99bb99 },  // Floor 3: mossy
-        { fog: 0x332233, ambient: 0xbb99bb },  // Floor 4: crypt
-        { fog: 0x331111, ambient: 0xbb8888 },  // Floor 5+: blood
-    ];
-    
-    let currentFloor = 1;
-    let mazeSeed = Math.floor(Math.random() * 1000000);
-    let floorStartTime = Date.now();
-    const FLOOR_GRACE_PERIOD = 2000;  // 2 seconds before skeletons attack
-    let isGameOver = false;
-    
-    function getFloorConfig(floor) {
-        const baseSize = 10;
-        const baseSkeletons = 3;
-        return {
-            gridSize: Math.min(baseSize + (floor - 1) * 2, 18),
-            skeletonCount: baseSkeletons + (floor - 1) * 2,  // No cap - gets brutal!
-            colors: FLOOR_COLORS[Math.min(floor - 1, FLOOR_COLORS.length - 1)]
-        };
-    }
-    
-    function applyFloorColors(floor) {
-        const config = getFloorConfig(floor);
-        scene.fog.color.setHex(config.colors.fog);
-        scene.background.setHex(config.colors.fog);
-        ambientLight.color.setHex(config.colors.ambient);
-    }
-    
-    function showFloorText(text) {
+    function showMessage(text) {
         const div = document.createElement('div');
-        // If it's a number, prefix with FLOOR
-        div.textContent = typeof text === 'number' ? 'FLOOR ' + text : text;
-        div.style.cssText = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:24px;color:#fff;font-family:'Press Start 2P',monospace;z-index:100;text-shadow:0 0 20px #000;";
+        div.textContent = text;
+        div.style.cssText = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:20px;color:#fff;font-family:'Press Start 2P',monospace;z-index:100;text-shadow:0 0 20px #000;";
         document.body.appendChild(div);
         setTimeout(() => div.remove(), 1500);
     }
     
-    function advanceFloor() {
-        currentFloor++;
-        mazeSeed = Math.floor(Math.random() * 1000000);
-        loadFloor(currentFloor, mazeSeed);
-        showFloorText(currentFloor);
-        updateFloorDisplay();
+    function playerAttack() {
+        if (isGameOver || playerCombat.state !== 'idle') return;
         
-        // Sync to Firebase
-        if (window.db) {
-            window.db.ref('world').set({
-                floor: currentFloor,
-                mazeSeed: mazeSeed,
-                timestamp: Date.now()
-            });
-        }
-    }
-    
-    function loadFloor(floor, seed) {
-        const config = getFloorConfig(floor);
+        playerCombat.state = 'swing';
+        playerCombat.stateTimer = Date.now();
         
-        // Update grid size (recreate with new size)
-        // For simplicity, we'll keep GRID_SIZE constant but scale skeleton count
+        const dir = DIRECTIONS[player.dir];
+        const targetX = player.gridX + dir.x;
+        const targetZ = player.gridZ + dir.z;
         
-        // Clear existing skeletons
-        skeletons.forEach(s => scene.remove(s.sprite));
-        skeletons.length = 0;
-        
-        // Regenerate maze with seed
-        Math.seedrandom && Math.seedrandom(seed);
-        generateMaze();
-        buildLevel();
-        
-        // Spawn skeletons
-        let spawned = 0;
-        for (let z = 3; z < GRID_SIZE - 1 && spawned < config.skeletonCount; z++) {
-            for (let x = 3; x < GRID_SIZE - 1 && spawned < config.skeletonCount; x++) {
-                if (maze[z][x] === 0 && Math.random() < 0.2) {
-                    spawnSkeleton(x, z);
-                    spawned++;
-                }
+        for (let i = skeletons.length - 1; i >= 0; i--) {
+            const skel = skeletons[i];
+            if (skel.gridX === targetX && skel.gridZ === targetZ) {
+                hitSkeleton(i);
+                break;
             }
         }
-        
-        // Reset player position
-        player.gridX = 1;
-        player.gridZ = 1;
-        player.x = CELL_SIZE;
-        player.z = CELL_SIZE;
-        player.targetX = CELL_SIZE;
-        player.targetZ = CELL_SIZE;
-        
-        applyFloorColors(floor);
-        floorStartTime = Date.now();  // Reset grace period
     }
     
+    // ============================================
+    // SKELETONS (respawn instead of floor advance)
+    // ============================================
     const skeletons = [];
-    const SKELETON_MOVE_INTERVAL = 800;  // ms between moves
-    const SKELETON_ATTACK_COOLDOWN = 2500;  // ms - more forgiving
+    const SKELETON_MOVE_INTERVAL = 800;
+    const SKELETON_ATTACK_COOLDOWN = 2500;
     const SKELETON_LERP_SPEED = 0.1;
+    const MAX_SKELETONS = 6;
+    const SKELETON_RESPAWN_TIME = 15000;  // Respawn every 15s if below max
+    
+    let lastSkeletonSpawn = Date.now();
     
     function spawnSkeleton(gridX, gridZ) {
-        const material = new THREE.SpriteMaterial({
-            map: skeletonTextures.idle,
-            transparent: true
-        });
+        const material = new THREE.SpriteMaterial({ map: skeletonTextures.idle, transparent: true });
         const sprite = new THREE.Sprite(material);
         sprite.scale.set(1.5, 1.5, 1);
         const worldX = gridX * CELL_SIZE;
@@ -889,40 +694,62 @@
         scene.add(sprite);
         
         skeletons.push({
-            sprite,
-            material,
-            gridX, gridZ,           // Grid position
-            x: worldX, z: worldZ,   // Render position (lerped)
+            sprite, material,
+            gridX, gridZ,
+            x: worldX, z: worldZ,
             state: 'idle',
             stateTimer: 0,
-            lastMove: Date.now() + Math.random() * SKELETON_MOVE_INTERVAL,  // Stagger
+            lastMove: Date.now() + Math.random() * SKELETON_MOVE_INTERVAL,
             lastAttack: 0,
-            hp: 2
+            hp: 2,
+            adjacentSince: null
         });
+    }
+    
+    function findSpawnPoint() {
+        // Find a random open cell far from player
+        for (let attempts = 0; attempts < 50; attempts++) {
+            const x = 4 + Math.floor(Math.random() * (GRID_SIZE - 6));
+            const z = 4 + Math.floor(Math.random() * (GRID_SIZE - 6));
+            
+            if (maze[z][x] === 0) {
+                // Check distance from player
+                const dist = Math.abs(x - player.gridX) + Math.abs(z - player.gridZ);
+                if (dist > 5) {
+                    // Check no skeleton already there
+                    const occupied = skeletons.some(s => s.gridX === x && s.gridZ === z);
+                    if (!occupied) return { x, z };
+                }
+            }
+        }
+        return null;
     }
     
     function updateSkeletons() {
         const now = Date.now();
         
+        // Respawn logic - only if enemy spawns were defined in the map
+        if (enemySpawns.length > 0 && skeletons.length < MAX_SKELETONS && now - lastSkeletonSpawn > SKELETON_RESPAWN_TIME) {
+            // Respawn at original spawn points
+            const available = enemySpawns.filter(p => !skeletons.some(s => s.gridX === p.x && s.gridZ === p.z));
+            if (available.length > 0) {
+                const point = available[Math.floor(Math.random() * available.length)];
+                spawnSkeleton(point.x, point.z);
+                lastSkeletonSpawn = now;
+            }
+        }
+        
         for (let i = skeletons.length - 1; i >= 0; i--) {
             const skel = skeletons[i];
             
-            // State timers
-            if (skel.state === 'hit' && now - skel.stateTimer > 200) {
-                skel.state = 'idle';
-            }
-            if (skel.state === 'attack' && now - skel.stateTimer > 400) {
-                skel.state = 'idle';
-            }
+            if (skel.state === 'hit' && now - skel.stateTimer > 200) skel.state = 'idle';
+            if (skel.state === 'attack' && now - skel.stateTimer > 400) skel.state = 'idle';
             
-            // Grid distance to player
             const dx = player.gridX - skel.gridX;
             const dz = player.gridZ - skel.gridZ;
-            const gridDist = Math.abs(dx) + Math.abs(dz);  // Manhattan distance
+            const gridDist = Math.abs(dx) + Math.abs(dz);
             
-            // Move on grid toward player
             if (gridDist > 1 && skel.state === 'idle' && now - skel.lastMove > SKELETON_MOVE_INTERVAL) {
-                // Pick cardinal direction toward player
                 let moveX = 0, moveZ = 0;
                 if (Math.abs(dx) >= Math.abs(dz)) {
                     moveX = dx > 0 ? 1 : -1;
@@ -930,7 +757,6 @@
                     moveZ = dz > 0 ? 1 : -1;
                 }
                 
-                // Check if target cell is walkable
                 const newGridX = skel.gridX + moveX;
                 const newGridZ = skel.gridZ + moveZ;
                 if (!isWall(newGridX, newGridZ)) {
@@ -939,35 +765,27 @@
                     skel.lastMove = now;
                 }
             } else if (gridDist === 1 && skel.state === 'idle') {
-                // Adjacent to player - attack!
-                // Must be cardinal, after grace period, and been adjacent for a bit
-                const isCardinal = (dx === 0 || dz === 0);  // Not diagonal
-                const graceOver = now - floorStartTime > FLOOR_GRACE_PERIOD;
+                const isCardinal = (dx === 0 || dz === 0);
                 
-                // Track when we became adjacent (either we moved or player moved)
-                if (!skel.adjacentSince) {
-                    skel.adjacentSince = now;
-                }
-                const adjacentLongEnough = now - skel.adjacentSince > 600;  // Wait 600ms
+                if (!skel.adjacentSince) skel.adjacentSince = now;
+                const adjacentLongEnough = now - skel.adjacentSince > 600;
                 
-                if (isCardinal && graceOver && adjacentLongEnough && now - skel.lastAttack > SKELETON_ATTACK_COOLDOWN) {
+                if (isCardinal && adjacentLongEnough && now - skel.lastAttack > SKELETON_ATTACK_COOLDOWN) {
                     skel.state = 'attack';
                     skel.stateTimer = now;
                     skel.lastAttack = now;
-                    playerTakeDamage();  // Ouch!
+                    playerTakeDamage();
                 }
             } else {
-                // Not adjacent - reset timer
                 skel.adjacentSince = null;
             }
             
-            // Lerp render position to grid position
+            // Lerp position
             const targetX = skel.gridX * CELL_SIZE;
             const targetZ = skel.gridZ * CELL_SIZE;
             skel.x += (targetX - skel.x) * SKELETON_LERP_SPEED;
             skel.z += (targetZ - skel.z) * SKELETON_LERP_SPEED;
             
-            // Update sprite
             skel.sprite.position.x = skel.x;
             skel.sprite.position.z = skel.z;
             skel.sprite.position.y = 1.0 + Math.sin(now * 0.005 + i) * 0.05;
@@ -984,80 +802,88 @@
         skel.stateTimer = Date.now();
         
         if (skel.hp <= 0) {
-            // Death!
             scene.remove(skel.sprite);
             skeletons.splice(index, 1);
-            
-            // Floor cleared?
-            if (skeletons.length === 0) {
-                showFloorText('CLEARED!');
-                setTimeout(() => advanceFloor(), 1500);
-            }
+            // No floor advance - just respawn later
         }
     }
     
-    // Spawn some skeletons in the maze
     function spawnInitialSkeletons() {
-        // Find open cells to spawn in
-        let spawned = 0;
-        for (let z = 3; z < GRID_SIZE - 1 && spawned < 5; z++) {
-            for (let x = 3; x < GRID_SIZE - 1 && spawned < 5; x++) {
-                if (maze[z][x] === 0 && Math.random() < 0.15) {
-                    spawnSkeleton(x, z);  // Grid coords, not world
-                    spawned++;
+        // Only spawn at red pixels - no fallback random spawns
+        if (enemySpawns.length > 0) {
+            enemySpawns.forEach(point => {
+                if (skeletons.length < MAX_SKELETONS) {
+                    spawnSkeleton(point.x, point.z);
                 }
-            }
+            });
         }
+        // No red pixels = no skeletons (peaceful town!)
     }
     
-    // Update our position in Firebase
+    // ============================================
+    // MULTIPLAYER
+    // ============================================
+    const otherPlayers = {};
+    const STALE_TIMEOUT = 30000;
+    
+    const GHOST_COLORS = [
+        0xff6666, 0x66ffff, 0xffb8ff, 0xffb852,
+        0x66ff66, 0xffff66, 0xb866ff, 0x66b8ff
+    ];
+    
+    function getGhostColor(playerId) {
+        let hash = 0;
+        for (let i = 0; i < playerId.length; i++) {
+            hash = ((hash << 5) - hash) + playerId.charCodeAt(i);
+        }
+        return GHOST_COLORS[Math.abs(hash) % GHOST_COLORS.length];
+    }
+    
     function broadcastPosition() {
         if (!window.db) return;
         
         const playerRef = window.db.ref('players/' + window.playerId);
-        playerRef.set({
+        const data = {
             x: player.x,
             z: player.z,
             dir: player.dir,
             timestamp: Date.now()
-        });
+        };
         
-        // Remove ourselves when we leave
+        // Add expression if active
+        if (currentExpression && Date.now() - expressionTimer < EXPRESSIONS[currentExpression].duration) {
+            data.expression = currentExpression;
+            data.expressionTime = expressionTimer;
+        }
+        
+        playerRef.set(data);
         playerRef.onDisconnect().remove();
     }
     
-    // Listen for other players
     function setupMultiplayer() {
-        if (!window.db) {
-            console.log('Firebase not available');
-            return;
-        }
+        if (!window.db) return;
         
         const playersRef = window.db.ref('players');
         
-        // Listen for changes
         playersRef.on('value', (snapshot) => {
             const data = snapshot.val() || {};
             const now = Date.now();
             let count = 0;
             
-            // Update or create lights for other players
             for (const id in data) {
-                if (id === window.playerId) continue;  // Skip self
+                if (id === window.playerId) continue;
                 
                 const p = data[id];
-                if (now - p.timestamp > STALE_TIMEOUT) continue;  // Skip stale
+                if (now - p.timestamp > STALE_TIMEOUT) continue;
                 
                 count++;
                 
                 if (!otherPlayers[id]) {
-                    // Create new ghost light + sprite
-                    const light = new THREE.PointLight(GHOST_COLOR, 1.5, 8);
+                    const ghostColor = getGhostColor(id);
+                    const light = new THREE.PointLight(ghostColor, 1.5, 8);
                     light.position.set(p.x, 1.2, p.z);
                     scene.add(light);
                     
-                    // Billboard knight sprite with unique color
-                    const ghostColor = getGhostColor(id);
                     const spriteMat = new THREE.SpriteMaterial({ 
                         map: knightTextures.idle,
                         transparent: true,
@@ -1068,35 +894,64 @@
                     sprite.position.set(p.x, 1.0, p.z);
                     scene.add(sprite);
                     
-                    // Match light color to sprite
-                    light.color.setHex(ghostColor);
+                    // Expression bubble (hidden by default)
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 64;
+                    canvas.height = 64;
+                    const bubbleTex = new THREE.CanvasTexture(canvas);
+                    bubbleTex.magFilter = THREE.NearestFilter;
+                    const bubbleMat = new THREE.SpriteMaterial({ map: bubbleTex, transparent: true });
+                    const bubble = new THREE.Sprite(bubbleMat);
+                    bubble.scale.set(0.8, 0.8, 1);
+                    bubble.visible = false;
+                    scene.add(bubble);
                     
-                    otherPlayers[id] = { light, sprite, x: p.x, z: p.z, lastSeen: now };
+                    otherPlayers[id] = { 
+                        light, sprite, bubble, bubbleTex, bubbleCanvas: canvas,
+                        x: p.x, z: p.z, lastSeen: now,
+                        expression: null, expressionTime: 0
+                    };
                 } else {
-                    // Update position (lerp for smooth movement)
                     otherPlayers[id].x = p.x;
                     otherPlayers[id].z = p.z;
                     otherPlayers[id].lastSeen = now;
+                    
+                    // Update expression
+                    if (p.expression && p.expressionTime) {
+                        const exprDuration = EXPRESSIONS[p.expression]?.duration || 2000;
+                        if (now - p.expressionTime < exprDuration) {
+                            if (otherPlayers[id].expression !== p.expression) {
+                                otherPlayers[id].expression = p.expression;
+                                otherPlayers[id].expressionTime = p.expressionTime;
+                                drawExpressionBubble(otherPlayers[id], p.expression);
+                            }
+                        } else {
+                            otherPlayers[id].expression = null;
+                            otherPlayers[id].bubble.visible = false;
+                        }
+                    } else {
+                        otherPlayers[id].expression = null;
+                        otherPlayers[id].bubble.visible = false;
+                    }
                 }
             }
             
-            // Remove stale players
+            // Remove stale
             for (const id in otherPlayers) {
                 if (!data[id] || now - data[id].timestamp > STALE_TIMEOUT) {
                     scene.remove(otherPlayers[id].light);
                     scene.remove(otherPlayers[id].sprite);
+                    scene.remove(otherPlayers[id].bubble);
                     delete otherPlayers[id];
                 }
             }
             
-            // Update player count
             document.getElementById('players').textContent = '👻 ' + count;
         });
         
-        // Broadcast position every 500ms
         setInterval(broadcastPosition, 500);
         
-        // Cleanup stale entries periodically (only one client needs to do this)
+        // Cleanup stale
         setInterval(() => {
             const now = Date.now();
             playersRef.once('value', (snapshot) => {
@@ -1108,64 +963,151 @@
                 }
             });
         }, 10000);
-        
-        console.log('Multiplayer enabled! Player ID:', window.playerId);
     }
     
-    // Lerp ghost lights + sprites in update loop
+    function drawExpressionBubble(player, expression) {
+        const emoji = EXPRESSIONS[expression]?.emoji || '❓';
+        const ctx = player.bubbleCanvas.getContext('2d');
+        ctx.clearRect(0, 0, 64, 64);
+        ctx.font = '40px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(emoji, 32, 32);
+        player.bubbleTex.needsUpdate = true;
+        player.bubble.visible = true;
+    }
+    
     function updateGhosts() {
+        const now = Date.now();
+        
         for (const id in otherPlayers) {
             const ghost = otherPlayers[id];
-            // Smooth movement
             ghost.light.position.x += (ghost.x - ghost.light.position.x) * 0.1;
             ghost.light.position.z += (ghost.z - ghost.light.position.z) * 0.1;
             ghost.sprite.position.x = ghost.light.position.x;
             ghost.sprite.position.z = ghost.light.position.z;
-            // Bobbing animation
-            ghost.sprite.position.y = 1.0 + Math.sin(Date.now() * 0.003 + parseInt(id, 36)) * 0.1;
+            ghost.sprite.position.y = 1.0 + Math.sin(now * 0.003 + parseInt(id, 36)) * 0.1;
+            ghost.light.intensity = 1.2 + Math.sin(now * 0.01 + parseInt(id, 36)) * 0.3;
             
-            // Flicker effect
-            ghost.light.intensity = 1.2 + Math.sin(Date.now() * 0.01 + parseInt(id, 36)) * 0.3;
+            // Position bubble beside sprite (avoids ceiling clip)
+            ghost.bubble.position.copy(ghost.sprite.position);
+            ghost.bubble.position.y += 0.3;
+            ghost.bubble.position.x += 0.5;
+            
+            // Check if expression expired
+            if (ghost.expression) {
+                const exprDuration = EXPRESSIONS[ghost.expression]?.duration || 2000;
+                if (now - ghost.expressionTime > exprDuration) {
+                    ghost.expression = null;
+                    ghost.bubble.visible = false;
+                }
+            }
         }
     }
     
-    init();
-    setupMultiplayer();
-    setupWorldSync();
+    // ============================================
+    // GAME LOOP
+    // ============================================
+    function lerp(a, b, t) { return a + (b - a) * t; }
     
-    // Sync world state (floor) across all players
-    function setupWorldSync() {
-        if (!window.db) return;
-        
-        const worldRef = window.db.ref('world');
-        
-        // Listen for floor changes
-        worldRef.on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (!data) return;
-            
-            // Sync to server floor (whether joining or advancing)
-            if (data.floor !== currentFloor || data.mazeSeed !== mazeSeed) {
-                currentFloor = data.floor;
-                mazeSeed = data.mazeSeed;
-                loadFloor(currentFloor, mazeSeed);
-                showFloorText(currentFloor);
-                updateFloorDisplay();
-            }
-        });
-        
-        // On first connect, check if world exists
-        worldRef.once('value', (snapshot) => {
-            if (!snapshot.val()) {
-                // We're first! Set initial world state
-                worldRef.set({
-                    floor: 1,
-                    mazeSeed: mazeSeed,
-                    timestamp: Date.now()
-                });
-            }
-        });
+    function lerpAngle(a, b, t) {
+        let diff = b - a;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        return a + diff * t;
     }
+    
+    let moveTimer = 0;
+    
+    function update() {
+        player.x = lerp(player.x, player.targetX, MOVE_SPEED);
+        player.z = lerp(player.z, player.targetZ, MOVE_SPEED);
+        player.rotation = lerpAngle(player.rotation, player.targetRotation, TURN_SPEED);
+        
+        const posDiff = Math.abs(player.x - player.targetX) + Math.abs(player.z - player.targetZ);
+        const rotDiff = Math.abs(player.rotation - player.targetRotation);
+        
+        if (player.moving) {
+            moveTimer++;
+            if ((posDiff < 0.05 && rotDiff < 0.05) || moveTimer > 60) {
+                player.x = player.targetX;
+                player.z = player.targetZ;
+                player.rotation = player.targetRotation;
+                player.moving = false;
+                moveTimer = 0;
+            }
+        }
+        
+        camera.position.set(player.x, 1, player.z);
+        camera.rotation.y = -player.rotation;
+        playerLight.position.set(player.x, 1.5, player.z);
+        playerSprite.position.set(player.x, 1.0, player.z);
+        
+        // Player combat state
+        const now = Date.now();
+        if (playerCombat.state === 'swing' && now - playerCombat.stateTimer > 300) playerCombat.state = 'idle';
+        if (playerCombat.state === 'hit' && now - playerCombat.stateTimer > 200) playerCombat.state = 'idle';
+        playerMaterial.map = knightTextures[playerCombat.state];
+        playerMaterial.needsUpdate = true;
+        
+        // Health regen
+        if (playerCombat.hp < playerCombat.maxHp && playerCombat.hp > 0) {
+            const timeSinceDamage = now - playerCombat.lastDamage;
+            const timeSinceHeal = now - playerCombat.lastHeal;
+            
+            if (timeSinceDamage > REGEN_DELAY && timeSinceHeal > REGEN_INTERVAL) {
+                playerCombat.hp++;
+                playerCombat.lastHeal = now;
+                updateHeartsDisplay();
+            }
+        }
+        
+        // Clear expression after duration
+        if (currentExpression && now - expressionTimer > EXPRESSIONS[currentExpression].duration) {
+            currentExpression = null;
+        }
+    }
+    
+    function animate() {
+        requestAnimationFrame(animate);
+        update();
+        updateGhosts();
+        updateSkeletons();
+        composer.render();
+    }
+    
+    // ============================================
+    // INIT
+    // ============================================
+    async function init() {
+        showMessage('Loading world...');
+        
+        // Try to load bitmap, fall back to generated maze
+        await loadWorldFromBitmap('worldmap.png');
+        
+        buildLevel();
+        spawnInitialSkeletons();
+        
+        // Use spawn point from map
+        player.gridX = spawnPoint.x;
+        player.gridZ = spawnPoint.z;
+        player.dir = 2;  // South
+        player.x = player.gridX * CELL_SIZE;
+        player.z = player.gridZ * CELL_SIZE;
+        player.targetX = player.x;
+        player.targetZ = player.z;
+        player.rotation = player.dir * Math.PI / 2;
+        player.targetRotation = player.rotation;
+        
+        updateCompass();
+        animate();
+        setupMultiplayer();
+        
+        console.log('Blocky Dungeon - Open World Mode');
+        console.log('Player ID:', window.playerId);
+    }
+    
+    init();
     </script>
 </body>
 </html>
