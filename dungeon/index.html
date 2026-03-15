@@ -131,7 +131,6 @@
     import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
     import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
     import { VRButton } from 'three/addons/webxr/VRButton.js';
-    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     
     // C64 Dither Shader
     const C64DitherShader = {
@@ -197,7 +196,6 @@
         0xFFFF00FF: { blocked: false, name: 'spawn' },     // Player spawn
         0xFF0000FF: { blocked: false, name: 'enemy' },     // Enemy spawn point
         0xFFFFFFFF: { blocked: false, name: 'floor' },     // Indoor floor
-        0xD2691EFF: { blocked: true, name: 'house' },       // house
     };
     
     // Fallback for unknown colors
@@ -431,134 +429,40 @@
     const defaultTileMaterial = tileMaterials.grass;
     
     // ============================================
-    // 3D MODEL LOADING
-    // ============================================
-    const gltfLoader = new GLTFLoader();
-    
-    // Model registry - maps tile names to loaded GLTF scenes
-    const tileModels = {};
-    
-    // Model config: which tiles use 3D models instead of primitives
-    // Add entries here as you create models
-    const MODEL_CONFIG = {
-        'house': { path: 'models/house.glb', scale: 1.0, yOffset: 0 },
-        // 'wall': { path: 'models/wall.glb', scale: 1.0, yOffset: 0 },
-        // 'tree': { path: 'models/tree.glb', scale: 1.0, yOffset: 0 },
-    };
-    
-    /**
-     * Load all configured 3D models
-     * @returns {Promise} Resolves when all models are loaded
-     */
-    async function loadModels() {
-        const entries = Object.entries(MODEL_CONFIG);
-        if (entries.length === 0) {
-            console.log('[Models] No models configured, using primitives');
-            return;
-        }
-        
-        console.log(`[Models] Loading ${entries.length} models...`);
-        
-        const promises = entries.map(([tileName, config]) => {
-            return new Promise((resolve, reject) => {
-                gltfLoader.load(
-                    config.path,
-                    (gltf) => {
-                        // Store the scene (contains all meshes)
-                        const model = gltf.scene;
-                        
-                        // Apply scale from config
-                        model.scale.setScalar(config.scale || 1.0);
-                        
-                        // Store for cloning later
-                        tileModels[tileName] = {
-                            scene: model,
-                            yOffset: config.yOffset || 0
-                        };
-                        
-                        console.log(`[Models] Loaded: ${tileName} from ${config.path}`);
-                        resolve();
-                    },
-                    undefined,  // onProgress
-                    (error) => {
-                        console.warn(`[Models] Failed to load ${tileName}: ${error.message}`);
-                        resolve();  // Don't reject - fall back to primitive
-                    }
-                );
-            });
-        });
-        
-        await Promise.all(promises);
-        console.log(`[Models] Loaded ${Object.keys(tileModels).length}/${entries.length} models`);
-    }
-    
-    /**
-     * Create a tile mesh - uses 3D model if available, otherwise primitive
-     */
-    function createTileMesh(tileName, isBlocked) {
-        // Check if we have a model for this tile type
-        if (tileModels[tileName]) {
-            const modelData = tileModels[tileName];
-            const clone = modelData.scene.clone();
-            clone.userData.yOffset = modelData.yOffset;
-            return clone;
-        }
-        
-        // Fallback to primitives
-        if (isBlocked) {
-            const geom = new THREE.BoxGeometry(CELL_SIZE, CELL_SIZE, CELL_SIZE);
-            const mat = tileMaterials[tileName] || wallMaterial;
-            return new THREE.Mesh(geom, mat);
-        } else {
-            const geom = new THREE.PlaneGeometry(CELL_SIZE, CELL_SIZE);
-            const mat = tileMaterials[tileName] || defaultTileMaterial;
-            const mesh = new THREE.Mesh(geom, mat);
-            mesh.rotation.x = -Math.PI / 2;
-            return mesh;
-        }
-    }
-    
-    // ============================================
     // BUILD LEVEL
     // ============================================
     function buildLevel() {
         // Clear existing (keep lights)
         const toRemove = [];
         scene.traverse(obj => {
-            if (obj.isMesh || obj.isGroup) toRemove.push(obj);
+            if (obj.isMesh) toRemove.push(obj);
         });
-        toRemove.forEach(obj => {
-            if (obj.parent) obj.parent.remove(obj);
-        });
+        toRemove.forEach(obj => scene.remove(obj));
         
-        // Tiles that render as floor even when blocked (props on top of floor)
+        const tileGeom = new THREE.PlaneGeometry(CELL_SIZE, CELL_SIZE);
+        const wallGeom = new THREE.BoxGeometry(CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        
+        // Tiles that render as floor even when blocked
         const flatBlockedTiles = ['water', 'tree'];
         
         for (let z = 0; z < GRID_SIZE; z++) {
             for (let x = 0; x < GRID_SIZE; x++) {
                 const tile = tileData[z]?.[x] || DEFAULT_TILE;
                 const isFlat = flatBlockedTiles.includes(tile.name);
-                const isBlocked = maze[z][x] === 1;
                 
-                if (isBlocked && !isFlat) {
-                    // Blocked wall: place cube or 3D model
-                    const mesh = createTileMesh(tile.name, true);
-                    const yOffset = mesh.userData.yOffset || 0;
-                    mesh.position.set(x * CELL_SIZE, CELL_SIZE / 2 + yOffset, z * CELL_SIZE);
-                    scene.add(mesh);
+                if (maze[z][x] === 1 && !isFlat) {
+                    // Blocked wall: place cube
+                    const mat = tileMaterials[tile.name] || wallMaterial;
+                    const wall = new THREE.Mesh(wallGeom, mat);
+                    wall.position.set(x * CELL_SIZE, CELL_SIZE / 2, z * CELL_SIZE);
+                    scene.add(wall);
                 } else {
-                    // Floor tile first
-                    const floorMesh = createTileMesh(isFlat ? 'floor' : tile.name, false);
-                    floorMesh.position.set(x * CELL_SIZE, 0.01, z * CELL_SIZE);
-                    scene.add(floorMesh);
-                    
-                    // If flat-blocked (like tree), add the prop on top
-                    if (isFlat && isBlocked) {
-                        const propMesh = createTileMesh(tile.name, true);
-                        const yOffset = propMesh.userData.yOffset || 0;
-                        propMesh.position.set(x * CELL_SIZE, CELL_SIZE / 2 + yOffset, z * CELL_SIZE);
-                        scene.add(propMesh);
-                    }
+                    // Floor tile (walkable OR flat-blocked like water)
+                    const mat = tileMaterials[tile.name] || defaultTileMaterial;
+                    const floor = new THREE.Mesh(tileGeom, mat);
+                    floor.rotation.x = -Math.PI / 2;
+                    floor.position.set(x * CELL_SIZE, 0.01, z * CELL_SIZE);
+                    scene.add(floor);
                 }
             }
         }
@@ -1276,9 +1180,6 @@
     // ============================================
     async function init() {
         showMessage('Loading world...');
-        
-        // Load 3D models first (if any configured)
-        await loadModels();
         
         // Try to load bitmap, fall back to generated maze
         await loadWorldFromBitmap('worldmap.png');
