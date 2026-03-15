@@ -351,8 +351,8 @@
     // THREE.JS SETUP
     // ============================================
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x2a2a4e);  // Lighter night sky
-    scene.fog = new THREE.Fog(0x2a2a4e, 10, 40);  // Much further fog
+    scene.background = new THREE.Color(0x87CEEB);  // Daytime sky blue
+    scene.fog = new THREE.Fog(0x87CEEB, 20, 60);  // Brighter, further fog
     
     const RENDER_WIDTH = 320;
     const RENDER_HEIGHT = 240;
@@ -367,6 +367,8 @@
     const renderer = new THREE.WebGLRenderer({ antialias: false });
     renderer.setSize(RENDER_WIDTH, RENDER_HEIGHT);
     renderer.setPixelRatio(1);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('game').appendChild(renderer.domElement);
     
     // WebXR VR Support
@@ -380,13 +382,22 @@
     const ditherPass = new ShaderPass(C64DitherShader);
     composer.addPass(ditherPass);
     
-    const ambientLight = new THREE.AmbientLight(0xaabbcc, 3.0);  // Strong ambient
+    const ambientLight = new THREE.AmbientLight(0xddeeff, 4.0);  // Brighter ambient
     scene.add(ambientLight);
     
-    // Directional moonlight from above
-    const moonLight = new THREE.DirectionalLight(0x8899bb, 2.0);
-    moonLight.position.set(10, 20, 10);
-    scene.add(moonLight);
+    // Directional sunlight with shadows
+    const sunLight = new THREE.DirectionalLight(0xffffee, 3.0);
+    sunLight.position.set(20, 30, 10);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 1024;
+    sunLight.shadow.mapSize.height = 1024;
+    sunLight.shadow.camera.near = 1;
+    sunLight.shadow.camera.far = 100;
+    sunLight.shadow.camera.left = -50;
+    sunLight.shadow.camera.right = 50;
+    sunLight.shadow.camera.top = 50;
+    sunLight.shadow.camera.bottom = -50;
+    scene.add(sunLight);
     
     const playerLight = new THREE.PointLight(0xffffee, 4, 14);  // Torch
     playerLight.position.set(0, 1, 0);
@@ -495,41 +506,44 @@
     // BUILD LEVEL
     // ============================================
     function buildLevel() {
-        // Clear existing meshes (keep lights)
+        // Clear existing (keep lights)
         const toRemove = [];
         scene.traverse(obj => {
-            if (obj.isMesh || obj.isGroup) toRemove.push(obj);
+            if (obj.isMesh) toRemove.push(obj);
         });
-        toRemove.forEach(obj => { if (obj.parent) obj.parent.remove(obj); });
+        toRemove.forEach(obj => scene.remove(obj));
         
-        // Tiles that render as floor with prop on top
+        const tileGeom = new THREE.PlaneGeometry(CELL_SIZE, CELL_SIZE);
+        const wallGeom = new THREE.BoxGeometry(CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        
+        // Tiles that render as floor even when blocked
         const flatBlockedTiles = ['water', 'tree'];
         
         for (let z = 0; z < GRID_SIZE; z++) {
             for (let x = 0; x < GRID_SIZE; x++) {
                 const tile = tileData[z]?.[x] || DEFAULT_TILE;
                 const isFlat = flatBlockedTiles.includes(tile.name);
-                const isBlocked = maze[z][x] === 1;
                 
-                if (isBlocked && !isFlat) {
-                    // Solid blocked tile - use model or cube
-                    const mesh = createTileMesh(tile.name, true);
-                    const yOffset = mesh.userData?.yOffset || 0;
-                    mesh.position.set(x * CELL_SIZE, CELL_SIZE / 2 + yOffset, z * CELL_SIZE);
-                    scene.add(mesh);
-                } else {
-                    // Floor tile
-                    const floorMesh = createTileMesh(isFlat ? 'floor' : tile.name, false);
-                    floorMesh.position.set(x * CELL_SIZE, 0.01, z * CELL_SIZE);
-                    scene.add(floorMesh);
-                    
-                    // Add prop on top for flat-blocked tiles
-                    if (isFlat && isBlocked) {
-                        const propMesh = createTileMesh(tile.name, true);
-                        const yOffset = propMesh.userData?.yOffset || 0;
-                        propMesh.position.set(x * CELL_SIZE, CELL_SIZE / 2 + yOffset, z * CELL_SIZE);
-                        scene.add(propMesh);
+                if (maze[z][x] === 1 && !isFlat) {
+                    // Blocked: use model if available, otherwise cube
+                    let wall;
+                    if (tileModels[tile.name]) {
+                        wall = tileModels[tile.name].scene.clone();
+                        const yOffset = tileModels[tile.name].yOffset || 0;
+                        wall.position.set(x * CELL_SIZE, yOffset, z * CELL_SIZE);
+                    } else {
+                        const mat = tileMaterials[tile.name] || wallMaterial;
+                        wall = new THREE.Mesh(wallGeom, mat);
+                        wall.position.set(x * CELL_SIZE, CELL_SIZE / 2, z * CELL_SIZE);
                     }
+                    scene.add(wall);
+                } else {
+                    // Floor tile (walkable OR flat-blocked like water)
+                    const mat = tileMaterials[tile.name] || defaultTileMaterial;
+                    const floor = new THREE.Mesh(tileGeom, mat);
+                    floor.rotation.x = -Math.PI / 2;
+                    floor.position.set(x * CELL_SIZE, 0.01, z * CELL_SIZE);
+                    scene.add(floor);
                 }
             }
         }
