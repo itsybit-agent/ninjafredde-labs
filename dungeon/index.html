@@ -97,6 +97,7 @@
     </div>
     
     <div id="hud">SWIPE TO MOVE · TAP TO ATTACK · 1-5 EMOTES</div>
+    <div id="debug" style="position:fixed;top:60px;left:10px;right:10px;color:#0f0;font-size:10px;font-family:monospace;z-index:100;background:rgba(0,0,0,0.7);padding:4px;display:none;"></div>
     
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -197,7 +198,7 @@
         0xFFFF00FF: { blocked: false, name: 'spawn' },     // Player spawn
         0xFF0000FF: { blocked: false, name: 'enemy' },     // Enemy spawn point
         0xFFFFFFFF: { blocked: false, name: 'floor' },     // Indoor floor
-        0xD2691EFF: { blocked: true,  name: 'house' },     // House building
+        0xFF00FFFF: { blocked: true,  name: 'house' },     // House building (magenta - survives mobile color shift)
     };
     
     // Fallback for unknown colors
@@ -277,11 +278,15 @@
                 tileData = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));
                 enemySpawns = [];
                 
-                // Read pixels
+                // Read pixels - disable color space conversion for exact colors
                 const canvas = document.createElement('canvas');
                 canvas.width = img.width;
                 canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
+                const ctx = canvas.getContext('2d', { 
+                    colorSpace: 'srgb',
+                    willReadFrequently: true 
+                });
+                let seenColors = {};
                 ctx.drawImage(img, 0, 0);
                 
                 for (let z = 0; z < img.height; z++) {
@@ -290,7 +295,14 @@
                         const rgba = (pixel[0] << 24) | (pixel[1] << 16) | (pixel[2] << 8) | pixel[3];
                         
                         // Find matching tile
-                        const tile = TILES[rgba >>> 0] || DEFAULT_TILE;
+                        const key = rgba >>> 0;
+                        const tile = TILES[key] || DEFAULT_TILE;
+                        if (!seenColors[key]) {
+                            seenColors[key] = { name: tile.name, rgb: [pixel[0], pixel[1], pixel[2]] };
+                            // Flag unmapped colors (falling back to grass)
+                            const mapped = TILES[key] ? '✓' : '?';
+                            debugMsg(`[Map] ${mapped} ${pixel[0]},${pixel[1]},${pixel[2]} → ${tile.name}`);
+                        }
                         tileData[z][x] = tile;
                         maze[z][x] = tile.blocked ? 1 : 0;
                         
@@ -453,25 +465,57 @@
         'house': { path: 'models/house.glb', scale: 1.0, yOffset: 0 },
     };
     
+    // Mobile debug helper - shows on-screen messages (add ?debug to URL)
+    const DEBUG_MODE = new URLSearchParams(window.location.search).has('debug');
+    const debugLines = [];
+    if (DEBUG_MODE) {
+        document.getElementById('debug').style.display = 'block';
+    }
+    
+    function debugMsg(msg) {
+        console.log(msg);
+        if (DEBUG_MODE) {
+            debugLines.push(msg);
+            if (debugLines.length > 8) debugLines.shift();  // Keep last 8
+            const el = document.getElementById('debug');
+            if (el) el.innerHTML = debugLines.join('<br>');
+        }
+    }
+
     async function loadModels() {
         const entries = Object.entries(MODEL_CONFIG);
         if (entries.length === 0) return;
         
-        console.log(`[Models] Loading ${entries.length} models...`);
+        debugMsg(`[Models] Loading ${entries.length} models...`);
         
         await Promise.all(entries.map(([tileName, config]) => 
             new Promise((resolve) => {
+                debugMsg(`[Models] Fetching: ${tileName}`);
                 gltfLoader.load(config.path,
                     (gltf) => {
                         const model = gltf.scene;
                         model.scale.setScalar(config.scale || 1.0);
+                        // Fix backface culling - make all materials double-sided
+                        model.traverse((child) => {
+                            if (child.isMesh && child.material) {
+                                if (Array.isArray(child.material)) {
+                                    child.material.forEach(m => m.side = THREE.DoubleSide);
+                                } else {
+                                    child.material.side = THREE.DoubleSide;
+                                }
+                            }
+                        });
                         tileModels[tileName] = { scene: model, yOffset: config.yOffset || 0 };
-                        console.log(`[Models] Loaded: ${tileName}`);
+                        debugMsg(`[Models] ✓ ${tileName} (${model.children.length} children)`);
                         resolve();
                     },
-                    undefined,
+                    (progress) => {
+                        if (progress.total) {
+                            debugMsg(`[Models] ${tileName}: ${Math.round(progress.loaded/progress.total*100)}%`);
+                        }
+                    },
                     (error) => {
-                        console.warn(`[Models] Failed: ${tileName}`, error.message);
+                        debugMsg(`[Models] ✗ ${tileName}: ${error.message || error}`);
                         resolve();  // Don't block on failure
                     }
                 );
@@ -479,9 +523,14 @@
         ));
     }
     
+    let modelUsageLogged = {};
     function createTileMesh(tileName, isBlocked) {
         // Use 3D model if available
         if (tileModels[tileName]) {
+            if (!modelUsageLogged[tileName]) {
+                debugMsg(`[Build] Using 3D model for: ${tileName}`);
+                modelUsageLogged[tileName] = true;
+            }
             const { scene, yOffset } = tileModels[tileName];
             const clone = scene.clone();
             clone.userData.yOffset = yOffset;
@@ -489,6 +538,10 @@
         }
         
         // Fallback to primitives
+        if (isBlocked && !modelUsageLogged['fallback_' + tileName]) {
+            debugMsg(`[Build] Fallback cube for: ${tileName}`);
+            modelUsageLogged['fallback_' + tileName] = true;
+        }
         if (isBlocked) {
             const geom = new THREE.BoxGeometry(CELL_SIZE, CELL_SIZE, CELL_SIZE);
             const mat = tileMaterials[tileName] || wallMaterial;
@@ -506,6 +559,8 @@
     // BUILD LEVEL
     // ============================================
     function buildLevel() {
+        debugMsg(`[Build] tileModels: ${Object.keys(tileModels).join(', ') || 'EMPTY!'}`);
+        
         // Clear existing (keep lights)
         const toRemove = [];
         scene.traverse(obj => {
@@ -528,10 +583,15 @@
                     // Blocked: use model if available, otherwise cube
                     let wall;
                     if (tileModels[tile.name]) {
+                        debugMsg(`[Build] 3D model @ ${x},${z}: ${tile.name}`);
                         wall = tileModels[tile.name].scene.clone();
                         const yOffset = tileModels[tile.name].yOffset || 0;
                         wall.position.set(x * CELL_SIZE, yOffset, z * CELL_SIZE);
                     } else {
+                        if (!modelUsageLogged['fb_' + tile.name]) {
+                            debugMsg(`[Build] Fallback cube: ${tile.name}`);
+                            modelUsageLogged['fb_' + tile.name] = true;
+                        }
                         const mat = tileMaterials[tile.name] || wallMaterial;
                         wall = new THREE.Mesh(wallGeom, mat);
                         wall.position.set(x * CELL_SIZE, CELL_SIZE / 2, z * CELL_SIZE);
@@ -1263,7 +1323,7 @@
         await loadModels();
         
         // Load world from bitmap
-        await loadWorldFromBitmap('worldmap.png');
+        await loadWorldFromBitmap('worldmap.png?v=' + Date.now());
         
         buildLevel();
         spawnInitialSkeletons();
