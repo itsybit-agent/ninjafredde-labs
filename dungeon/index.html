@@ -592,6 +592,8 @@
                     if (tileModels[tile.name]) {
                         debugMsg(`[Build] 3D model @ ${x},${z}: ${tile.name}`);
                         wall = tileModels[tile.name].scene.clone();
+                        // Random 90° rotation for variety
+                        wall.rotation.y = Math.floor(Math.random() * 4) * (Math.PI / 2);
                         const yOffset = tileModels[tile.name].yOffset || 0;
                         wall.position.set(x * CELL_SIZE, yOffset, z * CELL_SIZE);
                     } else {
