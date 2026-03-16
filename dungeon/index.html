@@ -29,11 +29,9 @@
         
         canvas {
             display: block;
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: contain;
             image-rendering: pixelated;
             image-rendering: crisp-edges;
+            /* Size controlled by JS for integer scaling */
         }
         
         #game { cursor: pointer; }
@@ -96,7 +94,7 @@
         <button class="expr-btn" data-expr="no">❌</button>
     </div>
     
-    <div id="hud">SWIPE TO MOVE · TAP TO ATTACK · 1-5 EMOTES</div>
+    <div id="hud">SWIPE TO MOVE · TAP TO ATTACK | <a href="#" id="ditherToggle" style="color:#0ff;">C64</a></div>
     <div id="debug" style="position:fixed;top:60px;left:10px;right:10px;color:#0f0;font-size:10px;font-family:monospace;z-index:100;background:rgba(0,0,0,0.7);padding:4px;display:none;"></div>
     
     <!-- Firebase -->
@@ -134,11 +132,16 @@
     import { VRButton } from 'three/addons/webxr/VRButton.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     
-    // C64 Dither Shader
-    const C64DitherShader = {
+    // Texture-based Palette Shader
+    const PaletteShader = {
         uniforms: {
             'tDiffuse': { value: null },
-            'resolution': { value: new THREE.Vector2(320, 200) }
+            'tPalette': { value: null },
+            'resolution': { value: new THREE.Vector2(320, 200) },
+            'paletteSize': { value: 16 },
+            'paletteEnabled': { value: true },
+            'ditherEnabled': { value: false },
+            'ditherStrength': { value: 0.03 }  // 0.12 = 100%, 0.03 = 25%
         },
         vertexShader: `
             varying vec2 vUv;
@@ -149,7 +152,12 @@
         `,
         fragmentShader: `
             uniform sampler2D tDiffuse;
+            uniform sampler2D tPalette;
             uniform vec2 resolution;
+            uniform int paletteSize;
+            uniform bool paletteEnabled;
+            uniform bool ditherEnabled;
+            uniform float ditherStrength;
             varying vec2 vUv;
             
             float bayer4(vec2 pos) {
@@ -161,20 +169,77 @@
                 m[4]=12.0; m[5]=4.0; m[6]=14.0; m[7]=6.0;
                 m[8]=3.0; m[9]=11.0; m[10]=1.0; m[11]=9.0;
                 m[12]=15.0; m[13]=7.0; m[14]=13.0; m[15]=5.0;
-                return m[index] / 16.0;
+                return m[index] / 16.0 - 0.5;
+            }
+            
+            vec3 nearestPaletteColor(vec3 color) {
+                float minDist = 999.0;
+                vec3 nearest = color;
+                
+                for (int i = 0; i < 32; i++) {
+                    if (i >= paletteSize) break;
+                    float u = (float(i) + 0.5) / float(paletteSize);
+                    vec3 palColor = texture2D(tPalette, vec2(u, 0.5)).rgb;
+                    float d = distance(color, palColor);
+                    if (d < minDist) {
+                        minDist = d;
+                        nearest = palColor;
+                    }
+                }
+                return nearest;
             }
             
             void main() {
                 vec2 pixel = floor(vUv * resolution) / resolution;
                 vec4 color = texture2D(tDiffuse, pixel);
-                vec2 pixelPos = vUv * resolution;
-                float threshold = bayer4(pixelPos);
-                float levels = 8.0;
-                vec3 dithered = floor(color.rgb * levels + threshold) / levels;
-                gl_FragColor = vec4(dithered, 1.0);
+                vec3 result = color.rgb;
+                
+                if (ditherEnabled) {
+                    vec2 pixelPos = vUv * resolution;
+                    float dither = bayer4(pixelPos) * ditherStrength;
+                    result = result + vec3(dither);
+                }
+                
+                if (paletteEnabled) {
+                    result = nearestPaletteColor(result);
+                }
+                
+                gl_FragColor = vec4(result, 1.0);
             }
         `
     };
+    
+    // Palette loader - size auto-detected from texture width (Nx1 strips)
+    const PALETTES = [
+        { name: 'C64', file: 'palettes/c64.png' },
+        { name: 'CGA', file: 'palettes/cga.png' },
+        { name: 'GB', file: 'palettes/gameboy.png' },
+        { name: 'VGA', file: 'palettes/ms-vga.png' },
+        { name: 'ZX', file: 'palettes/zx-spectrum.png' },
+        { name: 'FEEL', file: 'palettes/feel-better.png' },
+        { name: 'LOST', file: 'palettes/lost-century.png' },
+        { name: 'OFF', file: null }
+    ];
+    
+    const paletteTextures = {};
+    async function loadPalettes() {
+        const loader = new THREE.TextureLoader();
+        for (const pal of PALETTES) {
+            if (!pal.file) continue;
+            try {
+                const tex = await loader.loadAsync(pal.file);
+                tex.minFilter = THREE.NearestFilter;
+                tex.magFilter = THREE.NearestFilter;
+                tex.generateMipmaps = false;
+                // Auto-detect size from width (Nx1 strips)
+                pal.size = pal.size || tex.image.width;
+                paletteTextures[pal.name] = tex;
+                console.log(`[Palette] ${pal.name}: ${pal.size} colors`);
+            } catch (e) {
+                console.warn('Failed to load palette:', pal.name);
+            }
+        }
+    }
     
     // ============================================
     // GAME CONFIG
@@ -378,6 +443,26 @@
     
     const renderer = new THREE.WebGLRenderer({ antialias: false });
     renderer.setSize(RENDER_WIDTH, RENDER_HEIGHT);
+    renderer.toneMapping = THREE.NoToneMapping;  // Accurate colors, no filmic shift
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    
+    // Integer scaling (2x, 3x, 4x) for crisp pixels
+    function updateCanvasScale() {
+        const maxW = window.innerWidth;
+        const maxH = window.innerHeight;
+        const scaleX = Math.floor(maxW / RENDER_WIDTH);
+        const scaleY = Math.floor(maxH / RENDER_HEIGHT);
+        const scale = Math.max(1, Math.min(scaleX, scaleY));  // Largest integer that fits
+        
+        const canvas = renderer.domElement;
+        canvas.style.width = (RENDER_WIDTH * scale) + 'px';
+        canvas.style.height = (RENDER_HEIGHT * scale) + 'px';
+        canvas.style.position = 'absolute';
+        canvas.style.left = ((maxW - RENDER_WIDTH * scale) / 2) + 'px';
+        canvas.style.top = ((maxH - RENDER_HEIGHT * scale) / 2) + 'px';
+    }
+    updateCanvasScale();
+    window.addEventListener('resize', updateCanvasScale);
     renderer.setPixelRatio(1);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -389,10 +474,64 @@
     vrButton.style.bottom = '100px';  // Above emote buttons
     document.body.appendChild(vrButton);
     
-    const composer = new EffectComposer(renderer);
+    // Custom render target with nearest filtering for crisp pixels
+    const renderTarget = new THREE.WebGLRenderTarget(RENDER_WIDTH, RENDER_HEIGHT, {
+        minFilter: THREE.NearestFilter,
+        magFilter: THREE.NearestFilter
+    });
+    const composer = new EffectComposer(renderer, renderTarget);
     composer.addPass(new RenderPass(scene, camera));
-    const ditherPass = new ShaderPass(C64DitherShader);
-    composer.addPass(ditherPass);
+    const palettePass = new ShaderPass(PaletteShader);
+    composer.addPass(palettePass);
+    
+    let currentPaletteIdx = 0;
+    let ditherOn = false;
+    
+    function setPalette(idx) {
+        const pal = PALETTES[idx];
+        if (pal.file && paletteTextures[pal.name]) {
+            palettePass.uniforms.tPalette.value = paletteTextures[pal.name];
+            palettePass.uniforms.paletteSize.value = pal.size;
+            palettePass.uniforms.paletteEnabled.value = true;
+        } else {
+            palettePass.uniforms.paletteEnabled.value = false;
+        }
+        updatePaletteLabel();
+    }
+    
+    function updatePaletteLabel() {
+        const label = PALETTES[currentPaletteIdx].name + (ditherOn ? '+D' : '');
+        document.getElementById('ditherToggle').textContent = label;
+    }
+    
+    // Palette cycle (click)
+    document.getElementById('ditherToggle').addEventListener('click', (e) => {
+        e.preventDefault();
+        currentPaletteIdx = (currentPaletteIdx + 1) % PALETTES.length;
+        setPalette(currentPaletteIdx);
+    });
+    
+    // Dither toggle (long press)
+    let pressTimer;
+    document.getElementById('ditherToggle').addEventListener('mousedown', () => {
+        pressTimer = setTimeout(() => {
+            ditherOn = !ditherOn;
+            palettePass.uniforms.ditherEnabled.value = ditherOn;
+            updatePaletteLabel();
+        }, 500);
+    });
+    document.getElementById('ditherToggle').addEventListener('mouseup', () => clearTimeout(pressTimer));
+    document.getElementById('ditherToggle').addEventListener('mouseleave', () => clearTimeout(pressTimer));
+    
+    // Also support touch for mobile
+    document.getElementById('ditherToggle').addEventListener('touchstart', () => {
+        pressTimer = setTimeout(() => {
+            ditherOn = !ditherOn;
+            palettePass.uniforms.ditherEnabled.value = ditherOn;
+            updatePaletteLabel();
+        }, 500);
+    });
+    document.getElementById('ditherToggle').addEventListener('touchend', () => clearTimeout(pressTimer));
     
     const ambientLight = new THREE.AmbientLight(0xddeeff, 4.0);  // Brighter ambient
     scene.add(ambientLight);
@@ -424,6 +563,7 @@
         const tex = textureLoader.load(path);
         tex.magFilter = THREE.NearestFilter;
         tex.minFilter = THREE.NearestFilter;
+        tex.generateMipmaps = false;  // No mipmaps for crisp pixels
         tex.wrapS = THREE.RepeatWrapping;
         tex.wrapT = THREE.RepeatWrapping;
         tex.colorSpace = THREE.SRGBColorSpace;
@@ -458,6 +598,15 @@
     // 3D MODEL LOADING
     // ============================================
     const gltfLoader = new GLTFLoader();
+    
+    // 2-step toon gradient (shadow / lit)
+    const toonGradient = new THREE.DataTexture(
+        new Uint8Array([80, 80, 80, 255, 255, 255, 255, 255]),  // dark, light
+        2, 1, THREE.RGBAFormat
+    );
+    toonGradient.minFilter = THREE.NearestFilter;
+    toonGradient.magFilter = THREE.NearestFilter;
+    toonGradient.needsUpdate = true;
     const tileModels = {};
     
     // Configure which tiles use 3D models
@@ -496,17 +645,24 @@
                     (gltf) => {
                         const model = gltf.scene;
                         model.scale.setScalar(config.scale || 1.0);
-                        // Fix rendering issues (alpha materials + frustum culling)
+                        // Convert to toon materials for crisp retro look
                         model.traverse((child) => {
                             if (child.isMesh) {
                                 child.geometry.computeBoundingBox();
                                 child.geometry.computeBoundingSphere();
                                 if (child.material) {
                                     const mats = Array.isArray(child.material) ? child.material : [child.material];
-                                    mats.forEach(m => {
-                                        m.side = THREE.DoubleSide;
-                                        m.alphaTest = 0.5;      // Hard alpha cutoff
-                                        m.depthWrite = true;    // Keep depth writing for alphaTest
+                                    mats.forEach(oldMat => {
+                                        // Create toon material from original
+                                        const toonMat = new THREE.MeshToonMaterial({
+                                            map: oldMat.map,
+                                            color: oldMat.color,
+                                            side: THREE.DoubleSide,
+                                            alphaTest: 0.5,
+                                            alphaMap: oldMat.alphaMap,
+                                            gradientMap: toonGradient
+                                        });
+                                        child.material = toonMat;
                                     });
                                 }
                             }
@@ -1167,7 +1323,7 @@
         const emoji = EXPRESSIONS[expression]?.emoji || '❓';
         const ctx = player.bubbleCanvas.getContext('2d');
         ctx.clearRect(0, 0, 64, 64);
-        ctx.font = '40px serif';
+        ctx.font = '40px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(emoji, 32, 32);
@@ -1328,8 +1484,9 @@
     async function init() {
         showMessage('Loading world...');
         
-        // Load 3D models first
-        await loadModels();
+        // Load palettes and 3D models
+        await Promise.all([loadPalettes(), loadModels()]);
+        setPalette(0);  // Start with C64
         
         // Load world from bitmap
         await loadWorldFromBitmap('worldmap.png?v=' + Date.now());
