@@ -1192,6 +1192,24 @@
         }
         return GHOST_COLORS[Math.abs(hash) % GHOST_COLORS.length];
     }
+
+    // Visitor name generator (matches watcher.py)
+    const NAME_ADJECTIVES = ["Swift", "Sneaky", "Bold", "Lazy", "Wise", "Wild", "Lost", "Brave", 
+                             "Mighty", "Shy", "Grumpy", "Jolly", "Sleepy", "Clever", "Hungry", "Noble"];
+    const NAME_NOUNS = ["Fox", "Owl", "Wolf", "Bear", "Raven", "Badger", "Hare", "Toad",
+                        "Dragon", "Knight", "Wizard", "Goblin", "Ranger", "Bard", "Thief", "Monk"];
+
+    function getVisitorName(playerId) {
+        let h = 0;
+        for (let i = 0; i < playerId.length; i++) {
+            h = ((h << 5) - h) + playerId.charCodeAt(i);
+            h = h & h;
+        }
+        h = Math.abs(h);
+        const adj = NAME_ADJECTIVES[h % NAME_ADJECTIVES.length];
+        const noun = NAME_NOUNS[(h >> 8) % NAME_NOUNS.length];
+        return `${adj} ${noun}`;
+    }
     
     function broadcastPosition() {
         if (!window.db) return;
@@ -1508,8 +1526,13 @@
         updateCompass();
         setupMultiplayer();
         
+        // Generate and show visitor name
+        window.playerName = getVisitorName(window.playerId);
+        setTimeout(() => showMessage(`Welcome, ${window.playerName}!`), 500);
+        
         console.log('Blocky Dungeon - Open World Mode');
         console.log('Player ID:', window.playerId);
+        console.log('Player Name:', window.playerName);
         console.log(`Spawn: grid(${player.gridX},${player.gridZ}) world(${player.x},${player.z})`);
         
         // Start render loop AFTER everything is ready
