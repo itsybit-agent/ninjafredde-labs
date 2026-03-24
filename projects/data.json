@@ -1,0 +1,136 @@
+{
+  "lastUpdated": "2026-03-24",
+  "slots": {
+    "active": 2,
+    "used": 2
+  },
+  "projects": [
+    {
+      "id": "gridrpg",
+      "name": "A Rat's Tail",
+      "emoji": "🐀",
+      "status": "active",
+      "tagline": "Grid-based RPG. Solo protagonist. Moral choices about rats.",
+      "tech": "Godot 4.4",
+      "repo": "https://github.com/itsybit-agent/GridRPG",
+      "shipDate": "2026-04-20",
+      "shipLabel": "Easter 🐰",
+      "progress": 55,
+      "milestones": [
+        { "name": "Core systems", "done": true },
+        { "name": "Town (Skara Brae)", "done": true },
+        { "name": "Combat + classes", "done": true },
+        { "name": "Water shader", "done": true },
+        { "name": "Level design (5 floors)", "done": false },
+        { "name": "Asset modeling", "done": false },
+        { "name": "Story paths (3 endings)", "done": false },
+        { "name": "Polish + playtesting", "done": false }
+      ],
+      "notes": "Entering asset frenzy mode. Manual level building phase."
+    },
+    {
+      "id": "familyquest",
+      "name": "Family Quest",
+      "emoji": "⚔️",
+      "status": "active",
+      "tagline": "Real-world RPG for families. Your house is the dungeon.",
+      "tech": "Godot 4.4 + Firebase",
+      "repo": "https://github.com/itsybit-agent/family-quest",
+      "shipDate": null,
+      "shipLabel": "Family demo",
+      "progress": 25,
+      "milestones": [
+        { "name": "Event model", "done": true },
+        { "name": "Terrain from satellite data", "done": true },
+        { "name": "OSM roads + water + trees", "done": true },
+        { "name": "Sun cycle + weather", "done": true },
+        { "name": "Quest markers + completion", "done": true },
+        { "name": "Character sprites + movement", "done": true },
+        { "name": "Terrain shader polish", "done": false },
+        { "name": "Firebase backend", "done": false },
+        { "name": "Reward shop", "done": false },
+        { "name": "Mobile deploy", "done": false },
+        { "name": "Family pitch demo", "done": false }
+      ],
+      "notes": "Day 1 prototype done. Terrain shader + lighting next."
+    },
+    {
+      "id": "tradingbot",
+      "name": "Trading Bot",
+      "emoji": "📈",
+      "status": "running",
+      "tagline": "Grid trading on BTC/EUR. Medium spicy.",
+      "tech": "Python + Binance API",
+      "repo": null,
+      "shipDate": null,
+      "shipLabel": "Running",
+      "progress": 90,
+      "milestones": [
+        { "name": "Grid strategy", "done": true },
+        { "name": "Telegram controls", "done": true },
+        { "name": "Volatility monitoring", "done": true },
+        { "name": "Adopt existing orders", "done": true },
+        { "name": "24h reconciliation", "done": true }
+      ],
+      "notes": "Maintenance mode. Ticking away."
+    },
+    {
+      "id": "arcaderacer",
+      "name": "ArcadeRacer",
+      "emoji": "🏎️",
+      "status": "parked",
+      "tagline": "Arcade racing with cutscene-driven story.",
+      "tech": "Godot 4.4",
+      "repo": null,
+      "shipDate": null,
+      "shipLabel": "Parked",
+      "progress": 70,
+      "milestones": [
+        { "name": "Race loop + AI", "done": true },
+        { "name": "Career progression", "done": true },
+        { "name": "Cutscene system", "done": true },
+        { "name": "Story content", "done": false },
+        { "name": "Track variety", "done": false }
+      ],
+      "notes": "MVP complete. Waiting for a slot."
+    },
+    {
+      "id": "cratered2",
+      "name": "Cratered-2",
+      "emoji": "🚀",
+      "status": "ondeck",
+      "tagline": "Waste of Space — animated series as a game. Comedy.",
+      "tech": "TBD",
+      "repo": "https://github.com/ninjafredde/cratered-2",
+      "shipDate": null,
+      "shipLabel": "On deck",
+      "progress": 10,
+      "milestones": [
+        { "name": "Story bible", "done": true },
+        { "name": "Character designs", "done": false },
+        { "name": "Core gameplay loop", "done": false },
+        { "name": "Prototype", "done": false }
+      ],
+      "notes": "Passion project simmering. Next up when a slot opens."
+    },
+    {
+      "id": "blockydungeon",
+      "name": "Blocky Dungeon",
+      "emoji": "🏰",
+      "status": "parked",
+      "tagline": "3D dungeon crawler in the browser.",
+      "tech": "Three.js",
+      "repo": null,
+      "shipDate": null,
+      "shipLabel": "Parked",
+      "progress": 40,
+      "milestones": [
+        { "name": "Tile engine", "done": true },
+        { "name": "GLB models", "done": true },
+        { "name": "Palette shader", "done": true },
+        { "name": "Gameplay", "done": false }
+      ],
+      "notes": "Labs demo. Cool tech but no game yet."
+    }
+  ]
+}

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NinjaFredde — Project Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    background: #0a0a0f;
+    color: #e0dcd0;
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  
+  h1 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 16px;
+    color: #f0c040;
+    text-align: center;
+    margin-bottom: 4px;
+    text-shadow: 2px 2px 0 #333;
+  }
+  
+  .subtitle {
+    text-align: center;
+    color: #666;
+    font-size: 12px;
+    margin-bottom: 24px;
+  }
+  
+  .slot-meter {
+    text-align: center;
+    margin-bottom: 24px;
+    font-size: 13px;
+    color: #888;
+  }
+  .slot-meter .used { color: #f0c040; font-weight: 700; }
+  .slot-meter .max { color: #666; }
+  .slot-meter .full { color: #e04040; }
+  
+  .section-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: #888;
+    margin: 20px 0 12px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    border-bottom: 1px solid #222;
+    padding-bottom: 6px;
+  }
+  
+  .project {
+    background: #14141f;
+    border: 1px solid #2a2a3a;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+    transition: border-color 0.2s;
+  }
+  .project:hover { border-color: #4a4a5a; }
+  .project.active { border-left: 3px solid #f0c040; }
+  .project.running { border-left: 3px solid #40c060; }
+  .project.ondeck { border-left: 3px solid #4080f0; }
+  .project.parked { border-left: 3px solid #444; opacity: 0.7; }
+  
+  .project-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .project-emoji { font-size: 24px; }
+  .project-name {
+    font-weight: 700;
+    font-size: 16px;
+    flex: 1;
+  }
+  .project-status {
+    font-size: 10px;
+    font-family: 'Press Start 2P', monospace;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .status-active { background: #3a2a00; color: #f0c040; }
+  .status-running { background: #0a2a10; color: #40c060; }
+  .status-ondeck { background: #0a1a3a; color: #4080f0; }
+  .status-parked { background: #1a1a1a; color: #666; }
+  
+  .project-tagline {
+    color: #888;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  
+  .progress-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .progress-bar {
+    flex: 1;
+    height: 8px;
+    background: #1a1a2a;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+  }
+  .progress-active { background: linear-gradient(90deg, #f0c040, #f08040); }
+  .progress-running { background: #40c060; }
+  .progress-ondeck { background: #4080f0; }
+  .progress-parked { background: #444; }
+  .progress-pct {
+    font-size: 12px;
+    font-weight: 600;
+    color: #888;
+    min-width: 36px;
+    text-align: right;
+  }
+  
+  .ship-date {
+    font-size: 12px;
+    color: #f08040;
+    margin-bottom: 8px;
+  }
+  .ship-date .countdown { font-weight: 700; }
+  .ship-date.overdue { color: #e04040; }
+  
+  .milestones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  .milestone {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: #1a1a2a;
+    color: #666;
+  }
+  .milestone.done {
+    background: #1a2a1a;
+    color: #60a060;
+    text-decoration: line-through;
+    text-decoration-color: #3a5a3a;
+  }
+  
+  .project-notes {
+    font-size: 12px;
+    color: #555;
+    font-style: italic;
+    margin-top: 6px;
+  }
+  
+  .project-links {
+    margin-top: 8px;
+    display: flex;
+    gap: 12px;
+  }
+  .project-links a {
+    font-size: 11px;
+    color: #4080f0;
+    text-decoration: none;
+  }
+  .project-links a:hover { text-decoration: underline; }
+  
+  .tech-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    background: #1a1a2a;
+    border-radius: 3px;
+    color: #666;
+    margin-left: 8px;
+  }
+  
+  .last-updated {
+    text-align: center;
+    color: #333;
+    font-size: 11px;
+    margin-top: 30px;
+  }
+  
+  .rule-reminder {
+    text-align: center;
+    color: #f0c040;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    margin-top: 16px;
+    opacity: 0.5;
+  }
+</style>
+</head>
+<body>
+
+<h1>⚔️ NinjaFredde</h1>
+<p class="subtitle">Project Dashboard</p>
+<div class="slot-meter" id="slotMeter"></div>
+
+<div id="activeSection"></div>
+<div id="runningSection"></div>
+<div id="ondeckSection"></div>
+<div id="parkedSection"></div>
+
+<p class="rule-reminder">⚠️ FINISH RULE: Before starting new → one active must ship or park</p>
+<p class="last-updated" id="lastUpdated"></p>
+
+<script>
+fetch('data.json?' + Date.now())
+  .then(r => r.json())
+  .then(data => render(data));
+
+function render(data) {
+  // Slot meter
+  const full = data.slots.used >= data.slots.active;
+  document.getElementById('slotMeter').innerHTML = 
+    `Active slots: <span class="${full ? 'full' : 'used'}">${data.slots.used}</span> / <span class="max">${data.slots.active}</span>`;
+  
+  document.getElementById('lastUpdated').textContent = `Last updated: ${data.lastUpdated}`;
+  
+  const groups = { active: [], running: [], ondeck: [], parked: [] };
+  data.projects.forEach(p => {
+    (groups[p.status] || groups.parked).push(p);
+  });
+  
+  const sections = [
+    { key: 'active', label: '🔥 Active', el: 'activeSection' },
+    { key: 'running', label: '✅ Running', el: 'runningSection' },
+    { key: 'ondeck', label: '📋 On Deck', el: 'ondeckSection' },
+    { key: 'parked', label: '💤 Parked', el: 'parkedSection' },
+  ];
+  
+  sections.forEach(s => {
+    const container = document.getElementById(s.el);
+    if (groups[s.key].length === 0) return;
+    
+    container.innerHTML = `<div class="section-title">${s.label}</div>`;
+    groups[s.key].forEach(p => {
+      container.innerHTML += renderProject(p);
+    });
+  });
+}
+
+function renderProject(p) {
+  let shipHtml = '';
+  if (p.shipDate) {
+    const days = Math.ceil((new Date(p.shipDate) - new Date()) / 86400000);
+    const overdue = days < 0;
+    shipHtml = `<div class="ship-date ${overdue ? 'overdue' : ''}">
+      🎯 ${p.shipLabel} — <span class="countdown">${overdue ? Math.abs(days) + 'd overdue!' : days + 'd remaining'}</span>
+    </div>`;
+  }
+  
+  const doneCount = p.milestones.filter(m => m.done).length;
+  const totalCount = p.milestones.length;
+  
+  return `
+    <div class="project ${p.status}">
+      <div class="project-header">
+        <span class="project-emoji">${p.emoji}</span>
+        <span class="project-name">${p.name}</span>
+        <span class="tech-badge">${p.tech}</span>
+        <span class="project-status status-${p.status}">${p.status}</span>
+      </div>
+      <div class="project-tagline">${p.tagline}</div>
+      ${shipHtml}
+      <div class="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill progress-${p.status}" style="width: ${p.progress}%"></div>
+        </div>
+        <span class="progress-pct">${p.progress}%</span>
+      </div>
+      <div class="milestones">
+        ${p.milestones.map(m => `<span class="milestone ${m.done ? 'done' : ''}">${m.done ? '✓' : '○'} ${m.name}</span>`).join('')}
+      </div>
+      <div class="project-notes">${p.notes}</div>
+      ${p.repo ? `<div class="project-links"><a href="${p.repo}" target="_blank">📂 Repo</a></div>` : ''}
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
