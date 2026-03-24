@@ -99,9 +99,9 @@
       "name": "Cratered-2",
       "emoji": "🚀",
       "status": "ondeck",
-      "tagline": "Waste of Space — animated series as a game. Comedy.",
+      "tagline": "Sci-fi comedy adventure game. Ship interiors, dysfunctional crew.",
       "tech": "TBD",
-      "repo": "https://github.com/ninjafredde/cratered-2",
+      "repo": null,
       "shipDate": null,
       "shipLabel": "On deck",
       "progress": 10,
@@ -112,6 +112,25 @@
         { "name": "Prototype", "done": false }
       ],
       "notes": "Passion project simmering. Next up when a slot opens."
+    },
+    {
+      "id": "ninjamultirpg",
+      "name": "NinjaMultiRPG",
+      "emoji": "⚔️",
+      "status": "parked",
+      "tagline": "Multiplayer retro RPG sandbox. Retro pixel compositor born here.",
+      "tech": "Godot 4.4",
+      "repo": null,
+      "shipDate": null,
+      "shipLabel": "Parked",
+      "progress": 35,
+      "milestones": [
+        { "name": "Retro compositor", "done": true },
+        { "name": "Multiplayer base", "done": true },
+        { "name": "World generation", "done": false },
+        { "name": "Combat system", "done": false }
+      ],
+      "notes": "Tech sandbox. Compositor shader reused in Family Quest."
     },
     {
       "id": "blockydungeon",
