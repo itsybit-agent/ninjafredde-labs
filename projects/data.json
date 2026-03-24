@@ -136,6 +136,26 @@
       "notes": "Rust learning project. Solid foundation, waiting for a slot."
     },
     {
+      "id": "ninjaverse",
+      "name": "NinjaVerse.Core",
+      "emoji": "🌌",
+      "status": "parked",
+      "tagline": "Universe simulator. Deterministic probabilities on a 0-1 timescale. Nothing exists until observed.",
+      "tech": "C#",
+      "repo": "https://github.com/ninjafredde/NinjaVerse.Core",
+      "shipDate": null,
+      "shipLabel": "Parked",
+      "progress": 20,
+      "milestones": [
+        { "name": "Normalized time scale", "done": true },
+        { "name": "Probability algorithms", "done": true },
+        { "name": "Observation system", "done": true },
+        { "name": "Manifestation", "done": false },
+        { "name": "Visual output", "done": false }
+      ],
+      "notes": "Schrödinger's universe. Lazy-evaluated existence. Deeply cool."
+    },
+    {
       "id": "blockydungeon",
       "name": "Blocky Dungeon",
       "emoji": "🏰",
