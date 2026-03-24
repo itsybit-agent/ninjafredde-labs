@@ -114,6 +114,28 @@
       "notes": "Tech sandbox. Compositor shader reused in Family Quest."
     },
     {
+      "id": "consolerpg",
+      "name": "Console RPG",
+      "emoji": "🦀",
+      "status": "parked",
+      "tagline": "Terminal RPG with procedural world gen. Learning Rust by building.",
+      "tech": "Rust + Ratatui",
+      "repo": "https://github.com/ninjafredde/ninjafredde-console-rpg",
+      "shipDate": null,
+      "shipLabel": "Parked",
+      "progress": 30,
+      "milestones": [
+        { "name": "Perlin world gen", "done": true },
+        { "name": "Movement + map view", "done": true },
+        { "name": "Places of interest", "done": true },
+        { "name": "Modular architecture", "done": true },
+        { "name": "Character creation", "done": false },
+        { "name": "NPC + dialogue", "done": false },
+        { "name": "Dungeon generator", "done": false }
+      ],
+      "notes": "Rust learning project. Solid foundation, waiting for a slot."
+    },
+    {
       "id": "blockydungeon",
       "name": "Blocky Dungeon",
       "emoji": "🏰",
