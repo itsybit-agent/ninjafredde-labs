@@ -54,26 +54,7 @@
       ],
       "notes": "Day 1 prototype done. Terrain shader + lighting next."
     },
-    {
-      "id": "tradingbot",
-      "name": "Trading Bot",
-      "emoji": "📈",
-      "status": "running",
-      "tagline": "Grid trading on BTC/EUR. Medium spicy.",
-      "tech": "Python + Binance API",
-      "repo": null,
-      "shipDate": null,
-      "shipLabel": "Running",
-      "progress": 90,
-      "milestones": [
-        { "name": "Grid strategy", "done": true },
-        { "name": "Telegram controls", "done": true },
-        { "name": "Volatility monitoring", "done": true },
-        { "name": "Adopt existing orders", "done": true },
-        { "name": "24h reconciliation", "done": true }
-      ],
-      "notes": "Maintenance mode. Ticking away."
-    },
+
     {
       "id": "arcaderacer",
       "name": "ArcadeRacer",
